@@ -1072,6 +1072,11 @@ async function finishCalendarPointer(event) {
   } else {
     end = maxDate(drag.currentDate, start);
   }
+  if (start === drag.startDate && end === drag.endDate) {
+    state.calendar.drag = null;
+    renderCalendar();
+    return;
+  }
   try {
     await api(`/api/calendar/blocks/${drag.blockId}`, {
       method: "PATCH",
