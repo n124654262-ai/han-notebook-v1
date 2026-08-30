@@ -594,6 +594,11 @@ button:focus-visible {
   cursor: grabbing;
 }
 
+.calendar-block:focus {
+  outline: 0;
+  box-shadow: none;
+}
+
 .calendar-block.is-preview {
   background: #4b8f78;
 }
