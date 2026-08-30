@@ -943,8 +943,8 @@ async function finishCalendarPointer(event) {
   let start = drag.startDate;
   let end = drag.endDate;
   if (drag.mode === "move") {
-    start = addDays(start, delta);
-    end = addDays(end, delta);
+    start = isoDate(addDays(start, delta));
+    end = isoDate(addDays(end, delta));
   } else if (drag.mode === "resize-start") {
     start = minDate(drag.currentDate, end);
   } else {
