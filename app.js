@@ -187,7 +187,6 @@ async function remoteApi(path, options = {}) {
         created_at: now,
         updated_at: now,
       };
-      if (!item.object_name || !item.subject) throw new Error("客戶／地點與事情不能空白");
       await remoteCollection("items").doc(item.id).set(item);
       return { item };
     }
@@ -1092,7 +1091,7 @@ elements.manualForm.addEventListener("submit", async (event) => {
   const data = new FormData(elements.manualForm);
   const issue = String(data.get("issue") || "").trim();
   const requestedAction = String(data.get("requested_action") || "").trim();
-  const subject = requestedAction && !issue.includes(requestedAction) ? `${issue}－${requestedAction}` : issue;
+  const subject = [issue, requestedAction].filter(Boolean).join("－");
   try {
     await api("/api/items", {
       method: "POST",
