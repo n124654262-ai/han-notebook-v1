@@ -439,6 +439,17 @@ button:focus-visible {
   font-size: 14px;
 }
 
+.calendar-selection-actions {
+  display: flex;
+  flex-shrink: 0;
+  gap: 10px;
+  align-items: center;
+}
+
+.danger-text {
+  color: var(--danger);
+}
+
 .text-button {
   padding: 4px 0;
   border: 0;
@@ -600,7 +611,11 @@ button:focus-visible {
 }
 
 .calendar-block.is-preview {
-  background: #4b8f78;
+  border: 1px dashed #176b52;
+  color: #176b52;
+  background: #d9eee4;
+  opacity: 0.78;
+  pointer-events: none;
 }
 
 .calendar-resize-handle {
