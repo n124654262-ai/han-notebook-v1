@@ -21,6 +21,7 @@ const state = {
     blocks: [],
     availableItems: [],
     selectedItemId: null,
+    selectedBlockId: null,
     drag: null,
   },
   resources: {
@@ -53,6 +54,7 @@ const elements = {
   calendarSelection: document.querySelector("#calendarSelection"),
   calendarSelectionText: document.querySelector("#calendarSelectionText"),
   calendarClearSelection: document.querySelector("#calendarClearSelection"),
+  calendarDeleteBlock: document.querySelector("#calendarDeleteBlock"),
   calendarItems: document.querySelector("#calendarItems"),
   calendarItemsEmpty: document.querySelector("#calendarItemsEmpty"),
   calendarGrid: document.querySelector("#calendarGrid"),
@@ -253,6 +255,14 @@ async function remoteApi(path, options = {}) {
     if (!/^\d{4}-\d{2}-\d{2}$/.test(start) || !/^\d{4}-\d{2}-\d{2}$/.test(end) || start > end) throw new Error("日期格式錯誤");
     await remoteCollection("calendar_blocks").doc(parts[3]).update({ start_date: start, end_date: end, updated_at: now });
     return { block: { id: parts[3], ...body, updated_at: now } };
+  }
+  if (parts[1] === "calendar" && parts[2] === "blocks" && parts.length === 4 && method === "DELETE") {
+    const blockRef = remoteCollection("calendar_blocks").doc(parts[3]);
+    const snapshot = await blockRef.get();
+    if (!snapshot.exists) throw new Error("找不到行事曆安排");
+    const block = remoteDoc(snapshot.data());
+    await blockRef.delete();
+    return { block };
   }
 
   if (parts[1] === "resources" && parts.length === 2 && method === "GET") {
@@ -744,6 +754,37 @@ async function saveCalendarWorkdayNote(itemId, start, end) {
   showNotice("日期已更新，但工作天數文字尚未寫入我的紀錄。", true);
 }
 
+async function removeCalendarWorkdayNote(itemId) {
+  const item = itemById(itemId) || remote.items.find((candidate) => candidate.id === itemId);
+  if (!item) return;
+  const notes = String(item.my_notes || "").split("\n").filter((entry) => entry && !entry.startsWith("行事曆工作天數："));
+  if (notes.join("\n") === String(item.my_notes || "")) return;
+  try {
+    const data = await api(`/api/items/${itemId}/notes`, {
+      method: "PATCH",
+      body: JSON.stringify({ my_notes: notes.join("\n"), revision: Number(item.note_revision || 0) }),
+    });
+    Object.assign(item, data.item);
+  } catch (_error) {
+    showNotice("時間條已刪除，但工作天數文字尚未從我的紀錄移除。", true);
+  }
+}
+
+async function deleteSelectedCalendarBlock() {
+  const block = state.calendar.blocks.find((candidate) => candidate.id === state.calendar.selectedBlockId);
+  if (!block) return;
+  if (!window.confirm(`確定刪除「${block.title}」的行事曆時間條？`)) return;
+  try {
+    await api(`/api/calendar/blocks/${block.id}`, { method: "DELETE" });
+    await removeCalendarWorkdayNote(block.item_id);
+    state.calendar.selectedBlockId = null;
+    showNotice("已刪除行事曆時間條");
+    await loadCalendar();
+  } catch (error) {
+    showNotice(`刪除行事曆時間條失敗：${error.message}`, true);
+  }
+}
+
 function setManualForm(open) {
   elements.manualForm.hidden = !open;
   elements.manualToggle.setAttribute("aria-expanded", String(open));
@@ -755,6 +796,7 @@ function openCalendarFor(itemId) {
   state.view = "calendar";
   state.expandedId = null;
   state.calendar.selectedItemId = itemId;
+  state.calendar.selectedBlockId = null;
   showNotice("已選取這筆事情，請在日期上按住拖曳");
   void loadCalendar();
 }
@@ -769,6 +811,7 @@ function changeMonth(delta) {
   next.setMonth(next.getMonth() + delta);
   state.calendar.month = `${next.getFullYear()}-${String(next.getMonth() + 1).padStart(2, "0")}`;
   state.calendar.selectedItemId = null;
+  state.calendar.selectedBlockId = null;
   void loadCalendar();
 }
 
@@ -776,8 +819,15 @@ function renderCalendar() {
   const monthDate = calendarMonthDate();
   elements.calendarHeading.textContent = `${monthDate.getFullYear()} 年 ${monthDate.getMonth() + 1} 月`;
   const selectedTitle = calendarSelectedTitle();
-  elements.calendarSelection.hidden = !selectedTitle;
-  elements.calendarSelectionText.textContent = selectedTitle ? `準備安排：${selectedTitle}` : "";
+  const selectedBlock = state.calendar.blocks.find((block) => block.id === state.calendar.selectedBlockId);
+  const preview = calendarDragPreview();
+  elements.calendarSelection.hidden = !selectedTitle && !selectedBlock && !preview;
+  elements.calendarSelectionText.textContent = preview
+    ? `預覽：${preview.start_date}～${preview.end_date}`
+    : selectedBlock
+      ? `已選取：${selectedBlock.title}（${selectedBlock.start_date}～${selectedBlock.end_date}）`
+      : selectedTitle ? `準備安排：${selectedTitle}` : "";
+  elements.calendarDeleteBlock.hidden = !selectedBlock || Boolean(state.calendar.drag);
   elements.calendarItems.replaceChildren();
   elements.calendarItemsEmpty.hidden = state.calendar.availableItems.length !== 0;
   for (const item of state.calendar.availableItems) {
@@ -789,6 +839,7 @@ function renderCalendar() {
     button.classList.toggle("is-selected", state.calendar.selectedItemId === item.id);
     button.addEventListener("click", () => {
       state.calendar.selectedItemId = state.calendar.selectedItemId === item.id ? null : item.id;
+      state.calendar.selectedBlockId = null;
       renderCalendar();
     });
     row.append(button);
@@ -829,7 +880,8 @@ function renderCalendar() {
       days.push(day);
     }
     grid.append(row);
-    renderCalendarBlocks(row, weekStart);
+    const previewBlock = calendarDragPreview();
+    renderCalendarBlocks(row, weekStart, previewBlock?.id);
     if (state.calendar.drag?.kind === "create" && state.calendar.drag.rowStart === row.dataset.weekStart) {
       const start = minDate(state.calendar.drag.startDate, state.calendar.drag.currentDate);
       const end = maxDate(state.calendar.drag.startDate, state.calendar.drag.currentDate);
@@ -841,11 +893,16 @@ function renderCalendar() {
         title: calendarSelectedTitle() || "新安排",
       }, weekStart, true);
     }
+    if (previewBlock && previewBlock.end_date >= row.dataset.weekStart
+      && previewBlock.start_date <= isoDate(addDays(weekStart, 6))) {
+      appendCalendarBar(row, previewBlock, weekStart, true);
+    }
   }
 }
 
-function renderCalendarBlocks(row, weekStart) {
+function renderCalendarBlocks(row, weekStart, skipBlockId = "") {
   for (const block of state.calendar.blocks) {
+    if (block.id === skipBlockId) continue;
     const rowEnd = isoDate(addDays(weekStart, 6));
     if (block.end_date < row.dataset.weekStart || block.start_date > rowEnd) continue;
     appendCalendarBar(row, block, weekStart, false);
@@ -869,6 +926,11 @@ function appendCalendarBar(row, block, weekStart, preview) {
   bar.textContent = block.title;
   if (!preview) {
     bar.addEventListener("pointerdown", (event) => beginCalendarBlock(event, block));
+    bar.addEventListener("click", () => {
+      state.calendar.selectedBlockId = block.id;
+      state.calendar.selectedItemId = null;
+      renderCalendar();
+    });
     const left = document.createElement("span");
     left.className = "calendar-resize-handle left";
     const right = document.createElement("span");
@@ -876,6 +938,25 @@ function appendCalendarBar(row, block, weekStart, preview) {
     bar.append(left, right);
   }
   row.append(bar);
+}
+
+function calendarDragPreview() {
+  const drag = state.calendar.drag;
+  if (!drag || drag.kind !== "block") return null;
+  let start = drag.startDate;
+  let end = drag.endDate;
+  if (drag.mode === "move") {
+    const delta = dateDiff(drag.originDate, drag.currentDate);
+    start = isoDate(addDays(start, delta));
+    end = isoDate(addDays(end, delta));
+  } else if (drag.mode === "resize-start") {
+    start = minDate(drag.currentDate, end);
+  } else {
+    end = maxDate(drag.currentDate, start);
+  }
+  const original = state.calendar.blocks.find((block) => block.id === drag.blockId);
+  if (!original) return null;
+  return { ...original, start_date: start, end_date: end };
 }
 
 function calendarLane(row, block) {
@@ -936,8 +1017,11 @@ function beginCalendarBlock(event, block) {
     endDate: block.end_date,
     currentDate: day,
   };
+  state.calendar.selectedBlockId = block.id;
+  state.calendar.selectedItemId = null;
   document.addEventListener("pointermove", handleCalendarPointerMove);
   document.addEventListener("pointerup", finishCalendarPointer);
+  renderCalendar();
 }
 
 function handleCalendarPointerMove(event) {
@@ -954,7 +1038,8 @@ async function finishCalendarPointer(event) {
   if (!drag || drag.pointerId !== event.pointerId) return;
   document.removeEventListener("pointermove", handleCalendarPointerMove);
   document.removeEventListener("pointerup", finishCalendarPointer);
-  state.calendar.drag = null;
+  state.calendar.drag = { ...drag, saving: true };
+  renderCalendar();
   if (drag.kind === "create") {
     const start = minDate(drag.startDate, drag.currentDate);
     const end = maxDate(drag.startDate, drag.currentDate);
@@ -965,9 +1050,11 @@ async function finishCalendarPointer(event) {
       });
       await saveCalendarWorkdayNote(state.calendar.selectedItemId, start, end);
       state.calendar.selectedItemId = null;
+      state.calendar.drag = null;
       showNotice("已建立行事曆時間長條");
       await loadCalendar();
     } catch (error) {
+      state.calendar.drag = null;
       showNotice(`建立行事曆失敗：${error.message}`, true);
       renderCalendar();
     }
@@ -976,6 +1063,7 @@ async function finishCalendarPointer(event) {
   const delta = dateDiff(drag.originDate, drag.currentDate);
   let start = drag.startDate;
   let end = drag.endDate;
+  const blockItemId = state.calendar.blocks.find((block) => block.id === drag.blockId)?.item_id;
   if (drag.mode === "move") {
     start = isoDate(addDays(start, delta));
     end = isoDate(addDays(end, delta));
@@ -989,10 +1077,12 @@ async function finishCalendarPointer(event) {
       method: "PATCH",
       body: JSON.stringify({ start_date: start, end_date: end }),
     });
-    await saveCalendarWorkdayNote(drag.blockId ? state.calendar.blocks.find((block) => block.id === drag.blockId)?.item_id : null, start, end);
+    await saveCalendarWorkdayNote(blockItemId, start, end);
+    state.calendar.drag = null;
     showNotice("已更新行事曆時間");
     await loadCalendar();
   } catch (error) {
+    state.calendar.drag = null;
     showNotice(`更新行事曆失敗：${error.message}`, true);
     renderCalendar();
   }
@@ -1152,8 +1242,10 @@ elements.calendarPrevious.addEventListener("click", () => changeMonth(-1));
 elements.calendarNext.addEventListener("click", () => changeMonth(1));
 elements.calendarClearSelection.addEventListener("click", () => {
   state.calendar.selectedItemId = null;
+  state.calendar.selectedBlockId = null;
   renderCalendar();
 });
+elements.calendarDeleteBlock.addEventListener("click", () => void deleteSelectedCalendarBlock());
 elements.resourceSearch.addEventListener("input", () => {
   state.resources.query = elements.resourceSearch.value;
   clearTimeout(elements.resourceSearch.searchTimer);
