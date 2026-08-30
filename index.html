@@ -1,0 +1,130 @@
+<!doctype html>
+<html lang="zh-Hant">
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+    <meta name="theme-color" content="#176b52">
+    <title>HAN 筆記本</title>
+    <link rel="stylesheet" href="styles.css">
+    <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-app-compat.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-auth-compat.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore-compat.js"></script>
+    <script src="firebase-config.js"></script>
+    <script src="app.js" defer></script>
+  </head>
+  <body>
+    <header class="app-header">
+      <h1>HAN 筆記本</h1>
+      <div class="header-status">
+        <span id="syncState" class="sync-state" aria-live="polite">等待登入</span>
+        <button id="authButton" class="auth-button" type="button">使用 Google 帳號登入</button>
+      </div>
+    </header>
+
+    <nav class="main-tabs" aria-label="主要區域">
+      <button type="button" class="tab-button is-active" data-view="inbox" aria-current="page">
+        暫存區 <span id="inboxCount" class="tab-count">0</span>
+      </button>
+      <button type="button" class="tab-button" data-view="todo">
+        待辦 <span id="todoCount" class="tab-count">0</span>
+      </button>
+      <button type="button" class="tab-button" data-view="calendar">行事曆</button>
+      <button type="button" class="tab-button" data-view="resources">資源庫</button>
+    </nav>
+
+    <main>
+      <section id="manualEntry" class="manual-entry" aria-labelledby="manualToggle">
+        <button id="manualToggle" class="manual-toggle" type="button" aria-expanded="false">
+          ＋ 手動輸入
+        </button>
+        <form id="manualForm" class="manual-form" hidden>
+          <label>
+            <span>客戶／地點 <b aria-label="必填">＊</b></span>
+            <input name="object_name" type="text" maxlength="120" autocomplete="organization" required>
+          </label>
+          <div class="two-columns">
+            <label>
+              <span>聯絡人</span>
+              <input name="contact_name" type="text" maxlength="120" autocomplete="name">
+            </label>
+            <label>
+              <span>電話</span>
+              <input name="phone" type="tel" maxlength="80" autocomplete="tel" inputmode="tel">
+            </label>
+          </div>
+          <label>
+            <span>發生什麼問題、要做什麼事情 <b aria-label="必填">＊</b></span>
+            <textarea name="issue" rows="3" maxlength="240" required></textarea>
+          </label>
+          <label>
+            <span>需要我做什麼 <b aria-label="必填">＊</b></span>
+            <select name="requested_action" required>
+              <option value="">請選擇</option>
+              <option value="回電">回電</option>
+              <option value="報價">報價</option>
+              <option value="安排維修">安排維修</option>
+              <option value="看現場">看現場</option>
+              <option value="判斷問題">判斷問題</option>
+              <option value="其他">其他</option>
+            </select>
+          </label>
+          <label>
+            <span>相關資料在哪裡 <b aria-label="必填">＊</b></span>
+            <input name="resource_location" type="text" maxlength="240" list="resourceOptions" required>
+            <datalist id="resourceOptions">
+              <option value="LINE"></option>
+              <option value="Email"></option>
+              <option value="其他"></option>
+            </datalist>
+          </label>
+          <label>
+            <span>原始內容（沒有可留空）</span>
+            <textarea name="original_message" rows="3" maxlength="4000"></textarea>
+          </label>
+          <div class="form-actions">
+            <button type="button" id="manualCancel" class="secondary-button">取消</button>
+            <button type="submit" class="primary-button">存入暫存區</button>
+          </div>
+        </form>
+      </section>
+
+      <p id="notice" class="notice" aria-live="polite" hidden></p>
+
+      <section id="calendarPanel" class="calendar-panel" aria-labelledby="calendarHeading" hidden>
+        <div class="calendar-toolbar">
+          <button id="calendarPrevious" class="calendar-nav" type="button" aria-label="上一個月">‹</button>
+          <h2 id="calendarHeading"></h2>
+          <button id="calendarNext" class="calendar-nav" type="button" aria-label="下一個月">›</button>
+        </div>
+        <p class="calendar-hint">先點選一筆未安排的事情，再在日期上按住拖曳建立時間長條。</p>
+        <div id="calendarSelection" class="calendar-selection" hidden>
+          <span id="calendarSelectionText"></span>
+          <button id="calendarClearSelection" class="text-button" type="button">清除選取</button>
+        </div>
+        <section class="calendar-assignment" aria-labelledby="availableHeading">
+          <h3 id="availableHeading">未安排</h3>
+          <ul id="calendarItems" class="calendar-items"></ul>
+          <p id="calendarItemsEmpty" class="calendar-empty" hidden>沒有尚未安排的事情</p>
+        </section>
+        <div id="calendarGrid" class="calendar-grid" role="grid" aria-label="行事曆日期"></div>
+      </section>
+
+      <section id="resourcesPanel" class="resources-panel" aria-labelledby="resourcesHeading" hidden>
+        <h2 id="resourcesHeading">資源庫</h2>
+        <label class="resource-search">
+          <span>搜尋正式文件</span>
+          <input id="resourceSearch" type="search" maxlength="100" placeholder="輸入文件名稱或日期">
+        </label>
+        <ul id="resourceList" class="resource-list"></ul>
+        <p id="resourceEmpty" class="empty-state" hidden>目前沒有正式文件</p>
+      </section>
+
+      <section class="list-section" aria-labelledby="listHeading">
+        <h2 id="listHeading">暫存區</h2>
+        <ul id="itemList" class="item-list"></ul>
+        <p id="emptyState" class="empty-state" hidden>目前沒有資料</p>
+      </section>
+    </main>
+  </body>
+</html>
+
