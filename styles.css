@@ -514,6 +514,10 @@ button:focus-visible {
   text-align: center;
 }
 
+.calendar-weekday:last-child {
+  background: #fff0f3;
+}
+
 .calendar-week-row {
   position: relative;
   display: grid;
@@ -546,6 +550,14 @@ button:focus-visible {
   color: #aab4ae;
 }
 
+.calendar-day:nth-child(7) {
+  background: #fff0f3;
+}
+
+.calendar-day:nth-child(7).is-outside {
+  background: #fff5f6;
+}
+
 .calendar-day.is-dragging {
   background: #d9eee4;
 }
@@ -562,15 +574,15 @@ button:focus-visible {
   position: absolute;
   z-index: 2;
   display: block;
-  height: 21px;
+  height: 18px;
   overflow: hidden;
-  padding: 2px 13px;
+  padding: 1px 13px;
   border: 0;
   border-radius: 3px;
   color: #ffffff;
   background: var(--green);
   font-size: 11px;
-  line-height: 17px;
+  line-height: 15px;
   text-align: left;
   text-overflow: ellipsis;
   white-space: nowrap;
@@ -734,7 +746,7 @@ button:focus-visible {
   .calendar-block {
     padding-right: 10px;
     padding-left: 10px;
-    font-size: 10px;
+    font-size: 11px;
   }
 }
 
