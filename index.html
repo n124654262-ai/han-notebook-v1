@@ -39,8 +39,8 @@
         </button>
         <form id="manualForm" class="manual-form" hidden>
           <label>
-            <span>客戶／地點 <b aria-label="必填">＊</b></span>
-            <input name="object_name" type="text" maxlength="120" autocomplete="organization" required>
+            <span>客戶／地點</span>
+            <input name="object_name" type="text" maxlength="120" autocomplete="organization">
           </label>
           <div class="two-columns">
             <label>
@@ -53,24 +53,16 @@
             </label>
           </div>
           <label>
-            <span>發生什麼問題、要做什麼事情 <b aria-label="必填">＊</b></span>
-            <textarea name="issue" rows="3" maxlength="240" required></textarea>
+            <span>要做什麼</span>
+            <textarea name="issue" rows="3" maxlength="240"></textarea>
           </label>
           <label>
-            <span>需要我做什麼 <b aria-label="必填">＊</b></span>
-            <select name="requested_action" required>
-              <option value="">請選擇</option>
-              <option value="回電">回電</option>
-              <option value="報價">報價</option>
-              <option value="安排維修">安排維修</option>
-              <option value="看現場">看現場</option>
-              <option value="判斷問題">判斷問題</option>
-              <option value="其他">其他</option>
-            </select>
+            <span>需要我做什麼</span>
+            <input name="requested_action" type="text" maxlength="240">
           </label>
           <label>
-            <span>相關資料在哪裡 <b aria-label="必填">＊</b></span>
-            <input name="resource_location" type="text" maxlength="240" list="resourceOptions" required>
+            <span>相關資料在哪裡</span>
+            <input name="resource_location" type="text" maxlength="240" list="resourceOptions">
             <datalist id="resourceOptions">
               <option value="LINE"></option>
               <option value="Email"></option>
