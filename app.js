@@ -711,6 +711,39 @@ async function runItemAction(itemId, action, successMessage) {
   }
 }
 
+function countWeekdays(start, end) {
+  let count = 0;
+  for (let dateValue = new Date(`${start}T00:00:00`); isoDate(dateValue) <= end; dateValue = addDays(dateValue, 1)) {
+    const day = dateValue.getDay();
+    if (day !== 0 && day !== 6) count += 1;
+  }
+  return count;
+}
+
+async function saveCalendarWorkdayNote(itemId, start, end) {
+  const item = itemById(itemId) || remote.items.find((candidate) => candidate.id === itemId);
+  if (!item) return;
+  const line = `行事曆工作天數：${countWeekdays(start, end)} 天（${start.replaceAll("-", "/")}～${end.replaceAll("-", "/")}，不含六、日）`;
+  const notes = String(item.my_notes || "").split("\n").filter((entry) => entry && !entry.startsWith("行事曆工作天數："));
+  notes.push(line);
+  let revision = Number(item.note_revision || 0);
+  for (let attempt = 0; attempt < 2; attempt += 1) {
+    try {
+      const data = await api(`/api/items/${itemId}/notes`, {
+        method: "PATCH",
+        body: JSON.stringify({ my_notes: notes.join("\n"), revision }),
+      });
+      Object.assign(item, data.item);
+      return;
+    } catch (error) {
+      if (error.status !== 409 || !error.item) break;
+      revision = Number(error.item.note_revision || 0);
+      notes.splice(0, notes.length, ...String(error.item.my_notes || "").split("\n").filter((entry) => entry && !entry.startsWith("行事曆工作天數：")), line);
+    }
+  }
+  showNotice("日期已更新，但工作天數文字尚未寫入我的紀錄。", true);
+}
+
 function setManualForm(open) {
   elements.manualForm.hidden = !open;
   elements.manualToggle.setAttribute("aria-expanded", String(open));
@@ -930,6 +963,7 @@ async function finishCalendarPointer(event) {
         method: "POST",
         body: JSON.stringify({ item_id: state.calendar.selectedItemId, start_date: start, end_date: end }),
       });
+      await saveCalendarWorkdayNote(state.calendar.selectedItemId, start, end);
       state.calendar.selectedItemId = null;
       showNotice("已建立行事曆時間長條");
       await loadCalendar();
@@ -955,6 +989,7 @@ async function finishCalendarPointer(event) {
       method: "PATCH",
       body: JSON.stringify({ start_date: start, end_date: end }),
     });
+    await saveCalendarWorkdayNote(drag.blockId ? state.calendar.blocks.find((block) => block.id === drag.blockId)?.item_id : null, start, end);
     showNotice("已更新行事曆時間");
     await loadCalendar();
   } catch (error) {
