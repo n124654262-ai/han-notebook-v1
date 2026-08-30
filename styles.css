@@ -425,6 +425,29 @@ button:focus-visible {
   font-size: 13px;
 }
 
+.calendar-quick-form {
+  margin: 0 14px 10px;
+  padding: 10px;
+  border: 1px solid #dbe7e1;
+  background: var(--soft);
+}
+
+.calendar-quick-form label {
+  display: block;
+}
+
+.calendar-quick-form label > span {
+  display: block;
+  margin-bottom: 5px;
+  color: #34413b;
+  font-size: 14px;
+  font-weight: 650;
+}
+
+.calendar-quick-form .form-actions {
+  margin-top: 9px;
+}
+
 .calendar-selection {
   display: flex;
   align-items: center;
@@ -776,4 +799,3 @@ button:focus-visible {
     border-left: 1px solid var(--line);
   }
 }
-

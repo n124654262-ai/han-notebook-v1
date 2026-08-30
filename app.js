@@ -51,6 +51,7 @@ const elements = {
   calendarPrevious: document.querySelector("#calendarPrevious"),
   calendarNext: document.querySelector("#calendarNext"),
   calendarHeading: document.querySelector("#calendarHeading"),
+  calendarQuickForm: document.querySelector("#calendarQuickForm"),
   calendarSelection: document.querySelector("#calendarSelection"),
   calendarSelectionText: document.querySelector("#calendarSelectionText"),
   calendarClearSelection: document.querySelector("#calendarClearSelection"),
@@ -801,6 +802,59 @@ function openCalendarFor(itemId) {
   void loadCalendar();
 }
 
+function quickCalendarFields(value) {
+  const text = String(value || "").trim();
+  const separator = text.indexOf("｜");
+  if (separator < 0) {
+    return { object_name: "", subject: text, original_message: text };
+  }
+  return {
+    object_name: text.slice(0, separator).trim(),
+    subject: text.slice(separator + 1).trim(),
+    original_message: text,
+  };
+}
+
+function rememberCreatedItem(item) {
+  if (!item?.id) return;
+  if (remote.enabled) {
+    remote.items = [item, ...remote.items.filter((candidate) => candidate.id !== item.id)];
+    state.inboxItems = remoteItemList("inbox");
+    state.todoItems = remoteItemList("todo");
+    return;
+  }
+  state.inboxItems = [item, ...state.inboxItems.filter((candidate) => candidate.id !== item.id)];
+}
+
+async function createQuickCalendarIdea(event) {
+  event.preventDefault();
+  const formData = new FormData(elements.calendarQuickForm);
+  const text = String(formData.get("title") || "").trim();
+  if (!text) {
+    showNotice("請輸入想法內容", true);
+    elements.calendarQuickForm.elements.title.focus();
+    return;
+  }
+  const fields = quickCalendarFields(text);
+  try {
+    const data = await api("/api/items", {
+      method: "POST",
+      body: JSON.stringify(fields),
+    });
+    rememberCreatedItem(data.item);
+    elements.calendarQuickForm.reset();
+    state.view = "calendar";
+    state.expandedId = null;
+    state.calendar.selectedItemId = data.item.id;
+    state.calendar.selectedBlockId = null;
+    showNotice("已新增行事曆想法，請在日期上按住拖曳");
+    render();
+    await loadCalendar();
+  } catch (error) {
+    showNotice(`無法新增行事曆想法：${error.message}`, true);
+  }
+}
+
 function calendarMonthDate() {
   const [year, month] = state.calendar.month.split("-").map(Number);
   return new Date(year, month - 1, 1);
@@ -1245,6 +1299,7 @@ elements.manualForm.addEventListener("submit", async (event) => {
 
 elements.calendarPrevious.addEventListener("click", () => changeMonth(-1));
 elements.calendarNext.addEventListener("click", () => changeMonth(1));
+elements.calendarQuickForm.addEventListener("submit", (event) => void createQuickCalendarIdea(event));
 elements.calendarClearSelection.addEventListener("click", () => {
   state.calendar.selectedItemId = null;
   state.calendar.selectedBlockId = null;
@@ -1282,4 +1337,3 @@ window.addEventListener("online", () => {
 window.addEventListener("offline", () => setConnection(false, "目前離線"));
 
 if (!initializeFirebase()) void loadItems();
-

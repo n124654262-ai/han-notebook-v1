@@ -89,6 +89,15 @@
           <button id="calendarNext" class="calendar-nav" type="button" aria-label="下一個月">›</button>
         </div>
         <p class="calendar-hint">先點選一筆未安排的事情，再在日期上按住拖曳建立時間長條。</p>
+        <form id="calendarQuickForm" class="calendar-quick-form">
+          <label>
+            <span>直接新增行事曆想法</span>
+            <input name="title" type="text" maxlength="240" placeholder="例如：新光｜報價">
+          </label>
+          <div class="form-actions">
+            <button type="submit" class="primary-button">新增並安排</button>
+          </div>
+        </form>
         <div id="calendarSelection" class="calendar-selection" hidden>
           <span id="calendarSelectionText"></span>
           <span class="calendar-selection-actions">
@@ -122,4 +131,3 @@
     </main>
   </body>
 </html>
-
