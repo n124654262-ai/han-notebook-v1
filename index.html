@@ -91,7 +91,10 @@
         <p class="calendar-hint">先點選一筆未安排的事情，再在日期上按住拖曳建立時間長條。</p>
         <div id="calendarSelection" class="calendar-selection" hidden>
           <span id="calendarSelectionText"></span>
-          <button id="calendarClearSelection" class="text-button" type="button">清除選取</button>
+          <span class="calendar-selection-actions">
+            <button id="calendarClearSelection" class="text-button" type="button">清除選取</button>
+            <button id="calendarDeleteBlock" class="text-button danger-text" type="button" hidden>刪除時間條</button>
+          </span>
         </div>
         <section class="calendar-assignment" aria-labelledby="availableHeading">
           <h3 id="availableHeading">未安排</h3>
