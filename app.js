@@ -83,6 +83,8 @@ const remote = {
   blocks: [],
   documents: [],
   publicSubmissions: new Map(),
+  publicSubmissionMessages: new Map(),
+  publicSubmissionMessageUnsubscribers: new Map(),
 };
 
 function remoteCollection(name) {
@@ -146,6 +148,30 @@ function remoteRefreshDocuments() {
     .sort((a, b) => `${b.document_date}${b.document_name}`.localeCompare(`${a.document_date}${a.document_name}`));
 }
 
+function syncPublicSubmissionMessageListeners(submissions) {
+  const visibleIds = new Set(submissions.map(({ id }) => id));
+  for (const [id, unsubscribe] of remote.publicSubmissionMessageUnsubscribers) {
+    if (!visibleIds.has(id)) {
+      unsubscribe();
+      remote.publicSubmissionMessageUnsubscribers.delete(id);
+      remote.publicSubmissionMessages.delete(id);
+    }
+  }
+  submissions.forEach(({ id }) => {
+    if (remote.publicSubmissionMessageUnsubscribers.has(id)) return;
+    const unsubscribe = firebase.firestore().collection("public_submissions").doc(id).collection("messages")
+      .orderBy("created_at")
+      .onSnapshot((snapshot) => {
+        remote.publicSubmissionMessages.set(id, snapshot.docs.map((doc) => ({ id: doc.id, ...doc.data() })));
+        remote.items.forEach((item) => {
+          if (item.source_submission_id === id) item.employee_conversation = remote.publicSubmissionMessages.get(id) || [];
+        });
+        if (state.expandedIds.size) render();
+      }, () => {});
+    remote.publicSubmissionMessageUnsubscribers.set(id, unsubscribe);
+  });
+}
+
 function publicSubmissionForItem(item) {
   if (item.source_submission_id) return remote.publicSubmissions.get(item.source_submission_id) || null;
   for (const [submissionId, submission] of remote.publicSubmissions.entries()) {
@@ -160,6 +186,7 @@ function publicSubmissionForItem(item) {
       item.source_submission_id = submissionId;
       item.employee_reply = submission.han_reply || "";
       item.employee_reply_at = submission.replied_at || "";
+      item.employee_conversation = remote.publicSubmissionMessages.get(submissionId) || [];
       return submission;
     }
   }
@@ -168,6 +195,9 @@ function publicSubmissionForItem(item) {
 
 function attachRemoteListeners() {
   for (const unsubscribe of remote.unsubscribers) unsubscribe();
+  for (const unsubscribe of remote.publicSubmissionMessageUnsubscribers.values()) unsubscribe();
+  remote.publicSubmissionMessageUnsubscribers.clear();
+  remote.publicSubmissionMessages.clear();
   remote.unsubscribers = [];
   remote.unsubscribers.push(remoteCollection("items").onSnapshot((snapshot) => {
     remote.items = snapshot.docs.map((doc) => {
@@ -176,6 +206,7 @@ function attachRemoteListeners() {
       if (submission) {
         item.employee_reply = submission.han_reply || "";
         item.employee_reply_at = submission.replied_at || "";
+        item.employee_conversation = remote.publicSubmissionMessages.get(item.source_submission_id) || [];
       }
       return item;
     });
@@ -190,11 +221,13 @@ function attachRemoteListeners() {
   remote.unsubscribers.push(firebase.firestore().collection("public_submissions")
     .where("owner_email", "==", remote.user.email).onSnapshot((snapshot) => {
       snapshot.docs.forEach((doc) => remote.publicSubmissions.set(doc.id, doc.data()));
+      syncPublicSubmissionMessageListeners(snapshot.docs);
       remote.items.forEach((item) => {
         const submission = publicSubmissionForItem(item);
         if (submission) {
           item.employee_reply = submission.han_reply || "";
           item.employee_reply_at = submission.replied_at || "";
+          item.employee_conversation = remote.publicSubmissionMessages.get(item.source_submission_id) || [];
         }
       });
       if (state.view !== "calendar" && state.expandedIds.size) render();
@@ -204,7 +237,7 @@ function attachRemoteListeners() {
         // 以公開留言文件 ID 作為固定的事情 ID，避免同步重試時重複建立資料。
         const itemId = `external-${doc.id}`;
         const item = {
-          id: itemId, source_submission_id: doc.id, employee_reply: submission.han_reply || "", employee_reply_at: submission.replied_at || "", object_name: submission.object_name || "", subject: submission.subject || "",
+          id: itemId, source_submission_id: doc.id, employee_reply: submission.han_reply || "", employee_reply_at: submission.replied_at || "", employee_conversation: remote.publicSubmissionMessages.get(doc.id) || [], object_name: submission.object_name || "", subject: submission.subject || "",
           contact_name: submission.contact_name || "", phone: submission.phone || "",
           original_message: "員工公開留言", resource_location: submission.resource_location || "",
           my_notes: submission.requested_action ? `需要我做什麼：${submission.requested_action}` : "",
@@ -324,6 +357,14 @@ async function remoteApi(path, options = {}) {
       han_reply: reply,
       replied_at: reply ? now : null,
     });
+    if (reply) {
+      await firebase.firestore().collection("public_submissions").doc(item.source_submission_id).collection("messages").add({
+        sender_role: "han",
+        sender_uid: remote.user.uid,
+        text: reply,
+        created_at: now,
+      });
+    }
     return { itemId: item.id, reply, replied_at: reply ? now : null };
   }
 
@@ -438,7 +479,10 @@ function initializeFirebase() {
     elements.authButton.textContent = user ? `登出 ${user.email || "Google 帳號"}` : "使用 Google 帳號登入";
     if (!user) {
       for (const unsubscribe of remote.unsubscribers) unsubscribe();
+      for (const unsubscribe of remote.publicSubmissionMessageUnsubscribers.values()) unsubscribe();
       remote.unsubscribers = [];
+      remote.publicSubmissionMessageUnsubscribers.clear();
+      remote.publicSubmissionMessages.clear();
       remote.items = [];
       remote.blocks = [];
       remote.documents = [];
@@ -803,9 +847,39 @@ function createDetails(item) {
   return details;
 }
 
+function createEmployeeConversation(item) {
+  const section = document.createElement("section");
+  section.className = "employee-conversation";
+  const heading = document.createElement("h3");
+  heading.textContent = "對話紀錄";
+  section.append(heading);
+  const messages = Array.isArray(item.employee_conversation) ? [...item.employee_conversation] : [];
+  if (item.employee_reply && !messages.some((message) => message.sender_role === "han")) {
+    messages.push({ sender_role: "han", text: item.employee_reply, created_at: item.employee_reply_at });
+  }
+  if (!messages.length) {
+    const empty = document.createElement("p");
+    empty.className = "employee-conversation-empty";
+    empty.textContent = "尚未有對話";
+    section.append(empty);
+    return section;
+  }
+  messages.sort((a, b) => String(a.created_at || "").localeCompare(String(b.created_at || "")));
+  messages.forEach((message) => {
+    const line = document.createElement("p");
+    line.className = `employee-conversation-line ${message.sender_role === "employee" ? "is-employee" : "is-han"}`;
+    const sender = document.createElement("strong");
+    sender.textContent = message.sender_role === "employee" ? "員工" : "HAN";
+    line.append(sender, document.createTextNode(String(message.text || "")));
+    section.append(line);
+  });
+  return section;
+}
+
 function createEmployeeReplyEditor(item) {
   const wrapper = document.createElement("section");
   wrapper.className = "employee-reply-editor";
+  wrapper.append(createEmployeeConversation(item));
   const label = document.createElement("label");
   label.className = "notes-label";
   label.textContent = "給員工的回覆";
