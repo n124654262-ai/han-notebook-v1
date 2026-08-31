@@ -5,13 +5,13 @@
     <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
     <meta name="theme-color" content="#176b52">
     <title>HAN 筆記本</title>
-    <link rel="stylesheet" href="styles.css?v=archive-0831">
+    <link rel="stylesheet" href="styles.css?v=archive-reply-0831">
     <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-app-compat.js"></script>
     <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-auth-compat.js"></script>
     <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore-compat.js"></script>
     <script src="firebase-config.js"></script>
     <script>if (new URLSearchParams(location.search).get("employee") === "1") document.documentElement.classList.add("employee-mode");</script>
-    <script src="app.js?v=archive-0831" defer></script>
+    <script src="app.js?v=archive-reply-0831" defer></script>
   </head>
   <body>
     <div class="app-topbar">
@@ -117,11 +117,6 @@
             <button id="calendarDeleteBlock" class="text-button danger-text" type="button" hidden>刪除時間條</button>
           </span>
         </div>
-        <section class="calendar-assignment" aria-labelledby="availableHeading">
-          <h3 id="availableHeading">未安排</h3>
-          <ul id="calendarItems" class="calendar-items"></ul>
-          <p id="calendarItemsEmpty" class="calendar-empty" hidden>沒有尚未安排的事情</p>
-        </section>
         <div id="calendarGrid" class="calendar-grid" role="grid" aria-label="行事曆日期"></div>
       </section>
 

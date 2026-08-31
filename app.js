@@ -17,6 +17,7 @@ const state = {
   todoItems: [],
   archiveItems: [],
   expandedIds: new Set(),
+  archiveSelectedIds: new Set(),
   editingId: null,
   itemEditDrafts: new Map(),
   calendar: {
@@ -60,8 +61,6 @@ const elements = {
   calendarSelectionText: document.querySelector("#calendarSelectionText"),
   calendarClearSelection: document.querySelector("#calendarClearSelection"),
   calendarDeleteBlock: document.querySelector("#calendarDeleteBlock"),
-  calendarItems: document.querySelector("#calendarItems"),
-  calendarItemsEmpty: document.querySelector("#calendarItemsEmpty"),
   calendarGrid: document.querySelector("#calendarGrid"),
   resourcesPanel: document.querySelector("#resourcesPanel"),
   resourceSearch: document.querySelector("#resourceSearch"),
@@ -83,6 +82,7 @@ const remote = {
   items: [],
   blocks: [],
   documents: [],
+  publicSubmissions: new Map(),
 };
 
 function remoteCollection(name) {
@@ -146,11 +146,32 @@ function remoteRefreshDocuments() {
     .sort((a, b) => `${b.document_date}${b.document_name}`.localeCompare(`${a.document_date}${a.document_name}`));
 }
 
+function publicSubmissionForItem(item) {
+  if (item.source_submission_id) return remote.publicSubmissions.get(item.source_submission_id) || null;
+  for (const [submissionId, submission] of remote.publicSubmissions.entries()) {
+    if (submission.item_id === item.id) {
+      item.source_submission_id = submissionId;
+      item.employee_reply = submission.han_reply || "";
+      item.employee_reply_at = submission.replied_at || "";
+      return submission;
+    }
+  }
+  return null;
+}
+
 function attachRemoteListeners() {
   for (const unsubscribe of remote.unsubscribers) unsubscribe();
   remote.unsubscribers = [];
   remote.unsubscribers.push(remoteCollection("items").onSnapshot((snapshot) => {
-    remote.items = snapshot.docs.map((doc) => remoteDoc(doc.data()));
+    remote.items = snapshot.docs.map((doc) => {
+      const item = remoteDoc(doc.data());
+      const submission = publicSubmissionForItem(item);
+      if (submission) {
+        item.employee_reply = submission.han_reply || "";
+        item.employee_reply_at = submission.replied_at || "";
+      }
+      return item;
+    });
     state.inboxItems = remoteItemList("inbox");
     state.todoItems = remoteItemList("todo");
     state.archiveItems = remoteItemList("archive");
@@ -161,13 +182,22 @@ function attachRemoteListeners() {
   // 員工公開留言：由負責人登入的瀏覽器匯入自己的暫存區。
   remote.unsubscribers.push(firebase.firestore().collection("public_submissions")
     .where("owner_email", "==", remote.user.email).onSnapshot((snapshot) => {
+      snapshot.docs.forEach((doc) => remote.publicSubmissions.set(doc.id, doc.data()));
+      remote.items.forEach((item) => {
+        const submission = publicSubmissionForItem(item);
+        if (submission) {
+          item.employee_reply = submission.han_reply || "";
+          item.employee_reply_at = submission.replied_at || "";
+        }
+      });
+      if (state.view !== "calendar" && state.expandedIds.size) render();
       snapshot.docChanges().filter((change) => change.type === "added").forEach(({ doc }) => {
         const submission = doc.data();
         if (submission.imported_at) return;
         // 以公開留言文件 ID 作為固定的事情 ID，避免同步重試時重複建立資料。
         const itemId = `external-${doc.id}`;
         const item = {
-          id: itemId, source_submission_id: doc.id, object_name: submission.object_name || "", subject: submission.subject || "",
+          id: itemId, source_submission_id: doc.id, employee_reply: submission.han_reply || "", employee_reply_at: submission.replied_at || "", object_name: submission.object_name || "", subject: submission.subject || "",
           contact_name: submission.contact_name || "", phone: submission.phone || "",
           original_message: "員工公開留言", resource_location: submission.resource_location || "",
           my_notes: submission.requested_action ? `需要我做什麼：${submission.requested_action}` : "",
@@ -224,6 +254,22 @@ async function remoteApi(path, options = {}) {
     }
   }
 
+  if (parts[1] === "items" && parts[2] === "batch-delete" && parts.length === 3 && method === "POST") {
+    const requestedIds = Array.isArray(body.item_ids)
+      ? [...new Set(body.item_ids.map((id) => String(id)).filter(Boolean))].slice(0, 100)
+      : [];
+    if (!requestedIds.length) return { deleted_ids: [] };
+    const refs = requestedIds.map((id) => remoteCollection("items").doc(id));
+    const snapshots = await Promise.all(refs.map((ref) => ref.get()));
+    const deletedIds = snapshots
+      .filter((snapshot) => snapshot.exists && Boolean(snapshot.data().in_archive))
+      .map((snapshot) => snapshot.id);
+    const batch = remote.db.batch();
+    deletedIds.forEach((id) => batch.delete(remoteCollection("items").doc(id)));
+    if (deletedIds.length) await batch.commit();
+    return { deleted_ids: deletedIds };
+  }
+
   if (parts[1] === "items" && parts.length === 3 && method === "PATCH") {
     const itemRef = remoteCollection("items").doc(parts[2]);
     const snapshot = await itemRef.get();
@@ -259,6 +305,19 @@ async function remoteApi(path, options = {}) {
       return next;
     });
     return { item: updated };
+  }
+
+  if (parts[1] === "items" && parts.length === 4 && parts[3] === "reply" && method === "POST") {
+    const itemSnapshot = await remoteCollection("items").doc(parts[2]).get();
+    if (!itemSnapshot.exists) throw new Error("找不到這筆事情");
+    const item = remoteDoc(itemSnapshot.data());
+    if (!item.source_submission_id) throw new Error("這筆資料沒有員工留言來源");
+    const reply = String(body.reply || "").trim().slice(0, 20000);
+    await firebase.firestore().collection("public_submissions").doc(item.source_submission_id).update({
+      han_reply: reply,
+      replied_at: reply ? now : null,
+    });
+    return { itemId: item.id, reply, replied_at: reply ? now : null };
   }
 
   if (parts[1] === "items" && parts.length === 4 && method === "POST") {
@@ -376,6 +435,7 @@ function initializeFirebase() {
       remote.items = [];
       remote.blocks = [];
       remote.documents = [];
+      remote.publicSubmissions.clear();
       state.inboxItems = [];
       state.todoItems = [];
       state.archiveItems = [];
@@ -508,7 +568,28 @@ function renderList() {
   elements.itemList.replaceChildren();
   const items = activeItems();
   elements.emptyState.hidden = items.length !== 0;
+  if (state.view === "archive") {
+    const visibleIds = new Set(items.map((item) => item.id));
+    state.archiveSelectedIds = new Set([...state.archiveSelectedIds].filter((id) => visibleIds.has(id)));
+  } else {
+    state.archiveSelectedIds.clear();
+  }
   for (const item of items) elements.itemList.append(createItemRow(item));
+  elements.listSection.querySelector(".archive-batch-actions")?.remove();
+  if (state.view === "archive") {
+    const actions = document.createElement("div");
+    actions.className = "archive-batch-actions";
+    const count = document.createElement("span");
+    count.textContent = `已選取 ${state.archiveSelectedIds.size} 筆`;
+    const button = document.createElement("button");
+    button.type = "button";
+    button.className = "danger-button";
+    button.textContent = "批次刪除";
+    button.disabled = state.archiveSelectedIds.size === 0;
+    button.addEventListener("click", () => void deleteSelectedArchiveItems());
+    actions.append(count, button);
+    elements.listSection.append(actions);
+  }
 }
 
 function createItemRow(item) {
@@ -517,6 +598,20 @@ function createItemRow(item) {
   row.dataset.itemId = item.id;
   const titleRow = document.createElement("div");
   titleRow.className = "item-title-row";
+  if (state.view === "archive") {
+    const checkbox = document.createElement("input");
+    checkbox.type = "checkbox";
+    checkbox.className = "archive-select";
+    checkbox.checked = state.archiveSelectedIds.has(item.id);
+    checkbox.setAttribute("aria-label", `選取 ${item.object_name}｜${item.subject}`);
+    checkbox.addEventListener("click", (event) => event.stopPropagation());
+    checkbox.addEventListener("change", () => {
+      if (checkbox.checked) state.archiveSelectedIds.add(item.id);
+      else state.archiveSelectedIds.delete(item.id);
+      renderList();
+    });
+    titleRow.append(checkbox);
+  }
   const title = document.createElement("button");
   title.type = "button";
   title.className = "item-title";
@@ -667,6 +762,9 @@ function createDetails(item) {
 
   const notes = createNotesEditor(item);
   details.append(notes.wrapper);
+  if (item.source_type === "external" && item.source_submission_id) {
+    details.append(createEmployeeReplyEditor(item));
+  }
   const actions = document.createElement("div");
   actions.className = "item-actions";
   if (item.in_archive) {
@@ -696,6 +794,47 @@ function createDetails(item) {
   );
   details.append(actions);
   return details;
+}
+
+function createEmployeeReplyEditor(item) {
+  const wrapper = document.createElement("section");
+  wrapper.className = "employee-reply-editor";
+  const label = document.createElement("label");
+  label.className = "notes-label";
+  label.textContent = "給員工的回覆";
+  const textarea = document.createElement("textarea");
+  textarea.className = "employee-reply-textarea";
+  textarea.rows = 3;
+  textarea.maxLength = 20000;
+  textarea.value = item.employee_reply || "";
+  autoGrowTextarea(textarea);
+  textarea.addEventListener("input", () => autoGrowTextarea(textarea));
+  const actions = document.createElement("div");
+  actions.className = "reply-actions";
+  const status = document.createElement("span");
+  status.className = "reply-status";
+  status.textContent = item.employee_reply ? "已回覆員工" : "尚未回覆";
+  const button = document.createElement("button");
+  button.type = "button";
+  button.className = "action-button reply-button";
+  button.textContent = "送出回覆";
+  button.addEventListener("click", async () => {
+    button.disabled = true;
+    try {
+      const data = await api(`/api/items/${item.id}/reply`, {
+        method: "POST",
+        body: JSON.stringify({ reply: textarea.value }),
+      });
+      item.employee_reply = data.reply;
+      status.textContent = data.reply ? "已回覆員工" : "已清除回覆";
+      showNotice(data.reply ? "已回覆員工" : "已清除員工回覆");
+    } catch (error) {
+      showNotice(`回覆員工失敗：${error.message}`, true);
+    } finally { button.disabled = false; }
+  });
+  actions.append(status, button);
+  wrapper.append(label, textarea, actions);
+  return wrapper;
 }
 
 function createNotesEditor(item) {
@@ -898,6 +1037,24 @@ async function runItemAction(itemId, action, successMessage) {
   }
 }
 
+async function deleteSelectedArchiveItems() {
+  const itemIds = [...state.archiveSelectedIds];
+  if (!itemIds.length) return;
+  if (!window.confirm(`確定刪除選取的 ${itemIds.length} 筆封存資料？刪除後無法復原。`)) return;
+  try {
+    const data = await api("/api/items/batch-delete", {
+      method: "POST",
+      body: JSON.stringify({ item_ids: itemIds }),
+    });
+    state.archiveSelectedIds.clear();
+    state.expandedIds.clear();
+    showNotice(`已刪除 ${data.deleted_ids.length} 筆封存資料`);
+    await loadItems({ keepExpanded: false });
+  } catch (error) {
+    showNotice(`批次刪除失敗：${error.message}`, true);
+  }
+}
+
 function countWeekdays(start, end) {
   let count = 0;
   for (let dateValue = new Date(`${start}T00:00:00`); isoDate(dateValue) <= end; dateValue = addDays(dateValue, 1)) {
@@ -1056,24 +1213,6 @@ function renderCalendar() {
       ? `已選取：${selectedBlock.title}（${selectedBlock.start_date}～${selectedBlock.end_date}）`
       : selectedTitle ? `準備安排：${selectedTitle}` : "";
   elements.calendarDeleteBlock.hidden = !selectedBlock || Boolean(state.calendar.drag);
-  elements.calendarItems.replaceChildren();
-  elements.calendarItemsEmpty.hidden = state.calendar.availableItems.length !== 0;
-  for (const item of state.calendar.availableItems) {
-    const row = document.createElement("li");
-    const button = document.createElement("button");
-    button.type = "button";
-    button.className = "calendar-item-button";
-    button.textContent = `${item.object_name}｜${item.subject}`;
-    button.classList.toggle("is-selected", state.calendar.selectedItemId === item.id);
-    button.addEventListener("click", () => {
-      state.calendar.selectedItemId = state.calendar.selectedItemId === item.id ? null : item.id;
-      state.calendar.selectedBlockId = null;
-      renderCalendar();
-    });
-    row.append(button);
-    elements.calendarItems.append(row);
-  }
-
   const grid = elements.calendarGrid;
   grid.replaceChildren();
   const weekdays = document.createElement("div");
@@ -1491,6 +1630,7 @@ for (const tab of elements.tabs) {
   tab.addEventListener("click", () => {
     state.view = tab.dataset.view;
     state.expandedIds.clear();
+    if (state.view !== "archive") state.archiveSelectedIds.clear();
     state.editingId = null;
     showNotice("");
     if (state.view === "calendar") void loadCalendar();

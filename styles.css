@@ -303,6 +303,15 @@ button:focus-visible {
   background: #ffffff;
 }
 
+.archive-select {
+  flex: 0 0 auto;
+  width: 19px;
+  height: 19px;
+  margin: 0 0 0 14px;
+  align-self: center;
+  accent-color: var(--green-dark);
+}
+
 .item-title {
   display: block;
   flex: 1;
@@ -340,6 +349,43 @@ button:focus-visible {
   padding: 2px 14px 14px;
   border-top: 1px solid #e5ebe8;
   background: var(--soft);
+}
+
+.archive-batch-actions {
+  position: sticky;
+  bottom: 0;
+  z-index: 5;
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 12px;
+  min-height: 52px;
+  padding: 8px 14px;
+  border-top: 1px solid #cfdcd5;
+  background: rgba(255, 255, 255, 0.97);
+}
+
+.archive-batch-actions span {
+  margin-right: auto;
+  color: var(--muted);
+  font-size: 13px;
+}
+
+.danger-button {
+  min-height: 38px;
+  padding: 8px 14px;
+  border: 1px solid #a64c4c;
+  border-radius: 4px;
+  color: #ffffff;
+  background: #a64c4c;
+  cursor: pointer;
+}
+
+.danger-button:disabled {
+  border-color: #cfcfcf;
+  color: #8c8c8c;
+  background: #eeeeee;
+  cursor: not-allowed;
 }
 
 .detail-edit-actions {
@@ -446,6 +492,40 @@ button:focus-visible {
   color: var(--muted);
   font-size: 12px;
   text-align: right;
+}
+
+.employee-reply-editor {
+  margin-top: 12px;
+  padding-top: 12px;
+  border-top: 1px solid #cfdcd5;
+}
+
+.employee-reply-editor .notes-label {
+  display: block;
+  margin-bottom: 5px;
+  color: #34413b;
+  font-size: 14px;
+  font-weight: 650;
+}
+
+.employee-reply-textarea {
+  min-height: 84px;
+  overflow-y: hidden;
+  resize: none;
+}
+
+.reply-actions {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 10px;
+  margin-top: 6px;
+}
+
+.reply-status {
+  margin-right: auto;
+  color: var(--muted);
+  font-size: 12px;
 }
 
 .note-status.is-warning {
