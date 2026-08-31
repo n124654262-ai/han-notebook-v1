@@ -164,15 +164,20 @@ function attachRemoteListeners() {
       snapshot.docChanges().filter((change) => change.type === "added").forEach(({ doc }) => {
         const submission = doc.data();
         if (submission.imported_at) return;
+        // 以公開留言文件 ID 作為固定的事情 ID，避免同步重試時重複建立資料。
+        const itemId = `external-${doc.id}`;
         const item = {
-          id: remoteId(), object_name: submission.object_name || "", subject: submission.subject || "",
+          id: itemId, source_submission_id: doc.id, object_name: submission.object_name || "", subject: submission.subject || "",
           contact_name: submission.contact_name || "", phone: submission.phone || "",
           original_message: "員工公開留言", resource_location: submission.resource_location || "",
           my_notes: submission.requested_action ? `需要我做什麼：${submission.requested_action}` : "",
           source_type: "external", in_inbox: true, in_todo: false, in_archive: false,
           note_revision: 0, created_at: submission.created_at || remoteNow(), updated_at: remoteNow(),
         };
-        remoteCollection("items").doc(item.id).set(item).then(() => doc.ref.update({ imported_by: remote.user.uid, imported_at: remoteNow(), item_id: item.id })).catch(() => {});
+        const itemRef = remoteCollection("items").doc(item.id);
+        itemRef.get().then((existing) => existing.exists ? null : itemRef.set(item))
+          .then(() => doc.ref.update({ imported_by: remote.user.uid, imported_at: remoteNow(), item_id: item.id }))
+          .catch(() => {});
       });
     }, () => {}));
   remote.unsubscribers.push(remoteCollection("calendar_blocks").onSnapshot((snapshot) => {
