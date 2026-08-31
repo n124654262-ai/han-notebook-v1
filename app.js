@@ -955,7 +955,6 @@ function startMainChatMessageEdit(line, bubble, item, message) {
   textarea.rows = 1;
   textarea.maxLength = 20000;
   textarea.value = String(message.text || "");
-  autoGrowTextarea(textarea);
   textarea.addEventListener("input", () => autoGrowTextarea(textarea));
   const actions = document.createElement("div");
   actions.className = "employee-chat-edit-actions";
@@ -989,6 +988,7 @@ function startMainChatMessageEdit(line, bubble, item, message) {
   actions.append(cancel, save);
   editor.append(textarea, actions);
   line.replaceChildren(editor);
+  autoGrowTextarea(textarea);
   textarea.focus();
 }
 
