@@ -347,6 +347,33 @@ async function remoteApi(path, options = {}) {
     return { item: updated };
   }
 
+  if (parts[1] === "items" && parts.length === 5 && parts[3] === "messages" && method === "PATCH") {
+    const itemSnapshot = await remoteCollection("items").doc(parts[2]).get();
+    if (!itemSnapshot.exists) throw new Error("找不到這筆事情");
+    const item = remoteDoc(itemSnapshot.data());
+    if (!item.source_submission_id) throw new Error("這筆資料沒有員工留言來源");
+    const submissionRef = firebase.firestore().collection("public_submissions").doc(item.source_submission_id);
+    const messageRef = submissionRef.collection("messages").doc(parts[4]);
+    const updatedText = String(body.text || "").trim().slice(0, 20000);
+    if (!updatedText) throw new Error("訊息不能是空白");
+    await remote.db.runTransaction(async (transaction) => {
+      const submissionSnapshot = await transaction.get(submissionRef);
+      const messageSnapshot = await transaction.get(messageRef);
+      if (!submissionSnapshot.exists || !messageSnapshot.exists) throw new Error("找不到這則訊息");
+      const message = messageSnapshot.data();
+      if (message.sender_role !== "han" || message.sender_uid !== remote.user.uid) {
+        throw new Error("只能修改自己發送的訊息");
+      }
+      transaction.update(messageRef, { text: updatedText, edited_at: now });
+      const submission = submissionSnapshot.data();
+      if (submission.han_reply_message_id === parts[4]
+        || (!submission.han_reply_message_id && String(submission.han_reply || "").trim() === String(message.text || "").trim())) {
+        transaction.update(submissionRef, { han_reply: updatedText, replied_at: now });
+      }
+    });
+    return { itemId: item.id, messageId: parts[4], text: updatedText };
+  }
+
   if (parts[1] === "items" && parts.length === 4 && parts[3] === "reply" && method === "POST") {
     const itemSnapshot = await remoteCollection("items").doc(parts[2]).get();
     if (!itemSnapshot.exists) throw new Error("找不到這筆事情");
@@ -370,12 +397,14 @@ async function remoteApi(path, options = {}) {
         created_at: previousReplyAt,
       });
     }
+    const replyMessageId = reply ? remoteId() : null;
     batch.update(submissionRef, {
       han_reply: reply,
       replied_at: reply ? now : null,
+      han_reply_message_id: replyMessageId,
     });
     if (reply) {
-      const messageRef = submissionRef.collection("messages").doc(remoteId());
+      const messageRef = submissionRef.collection("messages").doc(replyMessageId);
       batch.set(messageRef, {
         sender_role: "han",
         sender_uid: remote.user.uid,
@@ -894,12 +923,73 @@ function createEmployeeConversation(item) {
     const sender = document.createElement("strong");
     sender.className = "employee-chat-sender";
     sender.textContent = `${message.sender_role === "employee" ? "員工" : "HAN"}:`;
-    bubble.append(sender, document.createTextNode(String(message.text || "")));
+    const text = document.createElement("span");
+    text.className = "employee-chat-text";
+    text.textContent = String(message.text || "");
+    bubble.append(sender, text);
+    if (message.sender_role === "han" && message.id) {
+      const edit = document.createElement("button");
+      edit.type = "button";
+      edit.className = "employee-chat-edit";
+      edit.textContent = "編輯";
+      edit.addEventListener("click", () => startMainChatMessageEdit(line, bubble, item, message));
+      bubble.append(edit);
+    }
+    if (message.edited_at) {
+      const edited = document.createElement("small");
+      edited.className = "employee-chat-edited";
+      edited.textContent = "已修改";
+      bubble.append(edited);
+    }
     line.append(bubble);
     log.append(line);
   });
   section.append(log);
   return section;
+}
+
+function startMainChatMessageEdit(line, bubble, item, message) {
+  const editor = document.createElement("div");
+  editor.className = "employee-chat-inline-editor";
+  const textarea = document.createElement("textarea");
+  textarea.rows = 1;
+  textarea.maxLength = 20000;
+  textarea.value = String(message.text || "");
+  autoGrowTextarea(textarea);
+  textarea.addEventListener("input", () => autoGrowTextarea(textarea));
+  const actions = document.createElement("div");
+  actions.className = "employee-chat-edit-actions";
+  const cancel = document.createElement("button");
+  cancel.type = "button";
+  cancel.className = "text-button";
+  cancel.textContent = "取消";
+  cancel.addEventListener("click", () => render());
+  const save = document.createElement("button");
+  save.type = "button";
+  save.className = "action-button";
+  save.textContent = "儲存";
+  save.addEventListener("click", async () => {
+    const text = textarea.value.trim();
+    if (!text) return;
+    save.disabled = true;
+    try {
+      await api(`/api/items/${item.id}/messages/${message.id}`, {
+        method: "PATCH",
+        body: JSON.stringify({ text }),
+      });
+      message.text = text;
+      message.edited_at = new Date().toISOString();
+      showNotice("訊息已修改");
+      render();
+    } catch (error) {
+      save.disabled = false;
+      showNotice(`修改訊息失敗：${error.message}`, true);
+    }
+  });
+  actions.append(cancel, save);
+  editor.append(textarea, actions);
+  line.replaceChildren(editor);
+  textarea.focus();
 }
 
 function createEmployeeReplyEditor(item) {
@@ -913,14 +1003,11 @@ function createEmployeeReplyEditor(item) {
   textarea.className = "employee-reply-textarea";
   textarea.rows = 1;
   textarea.maxLength = 20000;
-  textarea.value = item.employee_reply || "";
+  textarea.value = "";
   autoGrowTextarea(textarea);
   textarea.addEventListener("input", () => autoGrowTextarea(textarea));
   const actions = document.createElement("div");
   actions.className = "reply-actions";
-  const status = document.createElement("span");
-  status.className = "reply-status";
-  status.textContent = item.employee_reply ? "已回覆員工" : "尚未回覆";
   const button = document.createElement("button");
   button.type = "button";
   button.className = "action-button reply-button";
@@ -933,14 +1020,18 @@ function createEmployeeReplyEditor(item) {
         body: JSON.stringify({ reply: textarea.value }),
       });
       item.employee_reply = data.reply;
-      status.textContent = data.reply ? "已回覆員工" : "已清除回覆";
-      showNotice(data.reply ? "已回覆員工" : "已清除員工回覆");
+      textarea.value = "";
+      autoGrowTextarea(textarea);
+      showNotice("已送出回覆");
     } catch (error) {
       showNotice(`回覆員工失敗：${error.message}`, true);
     } finally { button.disabled = false; }
   });
-  actions.append(status, button);
-  wrapper.append(label, textarea, actions);
+  const composer = document.createElement("div");
+  composer.className = "reply-composer";
+  composer.append(textarea, button);
+  label.append(composer);
+  wrapper.append(label);
   return wrapper;
 }
 

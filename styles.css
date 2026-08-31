@@ -557,6 +557,43 @@ button:focus-visible {
   font-size: 14px;
 }
 
+.employee-chat-text {
+  white-space: pre-wrap;
+}
+
+.employee-chat-edit {
+  margin-left: 8px;
+  padding: 0;
+  border: 0;
+  color: var(--green-dark);
+  background: transparent;
+  font-size: 12px;
+  cursor: pointer;
+}
+
+.employee-chat-edited {
+  display: inline-block;
+  margin-left: 7px;
+  color: var(--muted);
+  font-size: 11px;
+}
+
+.employee-chat-inline-editor {
+  min-width: min(100%, 280px);
+}
+
+.employee-chat-inline-editor textarea {
+  min-height: 38px;
+  resize: none;
+}
+
+.employee-chat-edit-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 6px;
+  margin-top: 4px;
+}
+
 .employee-chat-message.is-employee .employee-chat-bubble {
   border-color: #b8d8c9;
   color: #0f503d;
@@ -583,6 +620,18 @@ button:focus-visible {
   overflow-y: auto;
   resize: none;
   line-height: 1.35;
+}
+
+.reply-composer {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: end;
+  gap: 6px;
+}
+
+.reply-composer .reply-button {
+  min-height: 38px;
+  white-space: nowrap;
 }
 
 .reply-actions {
