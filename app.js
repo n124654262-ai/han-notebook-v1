@@ -480,6 +480,8 @@ function createItemRow(item) {
   const row = document.createElement("li");
   row.className = "item-row";
   row.dataset.itemId = item.id;
+  const titleRow = document.createElement("div");
+  titleRow.className = "item-title-row";
   const title = document.createElement("button");
   title.type = "button";
   title.className = "item-title";
@@ -492,7 +494,19 @@ function createItemRow(item) {
     if (collapsing && state.editingId === item.id) state.editingId = null;
     render();
   });
-  row.append(title);
+  titleRow.append(title);
+  if (state.expandedIds.has(item.id) && state.editingId !== item.id) {
+    const edit = document.createElement("button");
+    edit.type = "button";
+    edit.className = "item-inline-edit";
+    edit.textContent = "編輯";
+    edit.addEventListener("click", () => {
+      state.editingId = item.id;
+      render();
+    });
+    titleRow.append(edit);
+  }
+  row.append(titleRow);
   if (state.expandedIds.has(item.id)) row.append(createDetails(item));
   return row;
 }
@@ -661,6 +675,7 @@ function createNotesEditor(item) {
   const textarea = document.createElement("textarea");
   textarea.id = `notes-${item.id}`;
   textarea.className = "my-notes";
+  textarea.rows = 3;
   textarea.maxLength = 20000;
   let draft = readDraft(item.id);
   if (draft && draft.text === item.my_notes) {
@@ -668,10 +683,12 @@ function createNotesEditor(item) {
     draft = null;
   }
   textarea.value = draft ? draft.text : item.my_notes;
+  autoGrowTextarea(textarea);
   const status = document.createElement("span");
   status.className = "note-status";
   status.textContent = draft ? "已暫存在這支手機，等待同步" : "已同步保存";
   textarea.addEventListener("input", () => {
+    autoGrowTextarea(textarea);
     const currentItem = itemById(item.id);
     if (!currentItem) return;
     localStorage.setItem(`${DRAFT_PREFIX}${item.id}`, JSON.stringify({
@@ -686,6 +703,11 @@ function createNotesEditor(item) {
   if (draft) scheduleNoteSave(item.id, textarea, status);
   wrapper.append(label, textarea, status);
   return { wrapper, textarea, status };
+}
+
+function autoGrowTextarea(textarea) {
+  textarea.style.height = "auto";
+  textarea.style.height = `${textarea.scrollHeight}px`;
 }
 
 function createOfficialEditor(item, notesTextarea) {
