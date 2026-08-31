@@ -16,6 +16,8 @@ const state = {
   inboxItems: [],
   todoItems: [],
   expandedId: null,
+  editingId: null,
+  itemEditDrafts: new Map(),
   calendar: {
     month: currentMonth,
     blocks: [],
@@ -193,6 +195,23 @@ async function remoteApi(path, options = {}) {
       await remoteCollection("items").doc(item.id).set(item);
       return { item };
     }
+  }
+
+  if (parts[1] === "items" && parts.length === 3 && method === "PATCH") {
+    const itemRef = remoteCollection("items").doc(parts[2]);
+    const snapshot = await itemRef.get();
+    if (!snapshot.exists) throw new Error("找不到這筆事情");
+    const updated = {
+      object_name: String(body.object_name || "").trim(),
+      subject: String(body.subject || "").trim(),
+      contact_name: String(body.contact_name || "").trim(),
+      phone: String(body.phone || "").trim(),
+      original_message: String(body.original_message || "").trim(),
+      resource_location: String(body.resource_location || "").trim(),
+      updated_at: now,
+    };
+    await itemRef.update(updated);
+    return { item: { ...remoteDoc(snapshot.data()), id: parts[2], ...updated } };
   }
 
   if (parts[1] === "items" && parts.length === 4 && parts[3] === "notes" && method === "PATCH") {
@@ -468,7 +487,9 @@ function createItemRow(item) {
   title.textContent = `${item.object_name}｜${item.subject}`;
   title.setAttribute("aria-expanded", String(state.expandedId === item.id));
   title.addEventListener("click", () => {
-    state.expandedId = state.expandedId === item.id ? null : item.id;
+    const collapsing = state.expandedId === item.id;
+    state.expandedId = collapsing ? null : item.id;
+    if (collapsing && state.editingId === item.id) state.editingId = null;
     render();
   });
   row.append(title);
@@ -476,30 +497,122 @@ function createItemRow(item) {
   return row;
 }
 
+function replaceItem(updated) {
+  const replace = (items) => items.map((item) => item.id === updated.id ? { ...item, ...updated } : item);
+  state.inboxItems = replace(state.inboxItems);
+  state.todoItems = replace(state.todoItems);
+  if (remote.enabled) {
+    remote.items = replace(remote.items);
+    remoteRefreshCalendar();
+  }
+}
+
+function createItemEditForm(item) {
+  const form = document.createElement("form");
+  form.className = "item-edit-form";
+  const original = {
+    object_name: item.object_name || "",
+    subject: item.subject || "",
+    contact_name: item.contact_name || "",
+    phone: item.phone || "",
+    original_message: item.original_message || "",
+    resource_location: item.resource_location || "",
+  };
+  const values = { ...original, ...(state.itemEditDrafts.get(item.id) || {}) };
+  const fields = [
+    ["對象", "object_name", "input"],
+    ["事情", "subject", "input"],
+    ["聯絡人", "contact_name", "input"],
+    ["電話", "phone", "input"],
+    ["原始訊息", "original_message", "textarea"],
+    ["資料位置", "resource_location", "input"],
+  ];
+  const controls = {};
+  for (const [label, key, type] of fields) {
+    const field = formField(label, type, values[key], key === "original_message" ? 4000 : 240);
+    controls[key] = field.control;
+    field.control.addEventListener("input", () => {
+      state.itemEditDrafts.set(item.id, Object.fromEntries(
+        Object.entries(controls).map(([name, control]) => [name, control.value]),
+      ));
+    });
+    form.append(field.wrapper);
+  }
+  const actions = document.createElement("div");
+  actions.className = "form-actions";
+  const cancel = document.createElement("button");
+  cancel.type = "button";
+  cancel.className = "secondary-button";
+  cancel.textContent = "取消";
+  cancel.addEventListener("click", () => {
+    state.itemEditDrafts.delete(item.id);
+    state.editingId = null;
+    render();
+  });
+  const save = document.createElement("button");
+  save.type = "submit";
+  save.className = "primary-button";
+  save.textContent = "儲存";
+  actions.append(cancel, save);
+  form.append(actions);
+  form.addEventListener("submit", async (event) => {
+    event.preventDefault();
+    save.disabled = true;
+    try {
+      const data = await api(`/api/items/${item.id}`, {
+        method: "PATCH",
+        body: JSON.stringify(Object.fromEntries(
+          Object.entries(controls).map(([name, control]) => [name, control.value]),
+        )),
+      });
+      replaceItem(data.item);
+      state.itemEditDrafts.delete(item.id);
+      state.editingId = null;
+      showNotice("資料已儲存");
+      render();
+    } catch (error) {
+      showNotice(`儲存資料失敗：${error.message}`, true);
+      save.disabled = false;
+    }
+  });
+  return form;
+}
+
 function createDetails(item) {
   const details = document.createElement("div");
   details.className = "item-details";
-  const list = document.createElement("dl");
-  list.className = "detail-list";
-  const pairs = [
-    ["對象", item.object_name],
-    ["事情", item.subject],
-    ["聯絡人", item.contact_name],
-    ["電話", item.phone],
-    ["原始訊息", item.original_message],
-    ["資料位置", item.resource_location],
-  ];
-  for (const [label, value] of pairs) {
-    const wrapper = document.createElement("div");
-    wrapper.className = "detail-pair";
-    const term = document.createElement("dt");
-    term.textContent = label;
-    const description = document.createElement("dd");
-    description.textContent = value || "—";
-    wrapper.append(term, description);
-    list.append(wrapper);
+  if (state.editingId === item.id) {
+    details.append(createItemEditForm(item));
+  } else {
+    const list = document.createElement("dl");
+    list.className = "detail-list";
+    const pairs = [
+      ["對象", item.object_name],
+      ["事情", item.subject],
+      ["聯絡人", item.contact_name],
+      ["電話", item.phone],
+      ["原始訊息", item.original_message],
+      ["資料位置", item.resource_location],
+    ];
+    for (const [label, value] of pairs) {
+      const wrapper = document.createElement("div");
+      wrapper.className = "detail-pair";
+      const term = document.createElement("dt");
+      term.textContent = label;
+      const description = document.createElement("dd");
+      description.textContent = value || "—";
+      wrapper.append(term, description);
+      list.append(wrapper);
+    }
+    details.append(list);
+    const editActions = document.createElement("div");
+    editActions.className = "detail-edit-actions";
+    editActions.append(actionButton("編輯", false, () => {
+      state.editingId = item.id;
+      render();
+    }));
+    details.append(editActions);
   }
-  details.append(list);
 
   const notes = createNotesEditor(item);
   details.append(notes.wrapper);
@@ -511,7 +624,7 @@ function createDetails(item) {
       await runItemAction(item.id, "todo", "已移到待辦");
     }),
     actionButton("行事曆", false, () => openCalendarFor(item.id)),
-    actionButton("升級", false, async () => {
+    actionButton("升級資源庫", false, async () => {
       if (!(await syncNote(item.id, notes.textarea, notes.status))) return;
       if (!details.querySelector(".official-editor")) {
         details.append(createOfficialEditor(item, notes.textarea));
@@ -1317,6 +1430,7 @@ for (const tab of elements.tabs) {
   tab.addEventListener("click", () => {
     state.view = tab.dataset.view;
     state.expandedId = null;
+    state.editingId = null;
     showNotice("");
     if (state.view === "calendar") void loadCalendar();
     else if (state.view === "resources") void loadResources();

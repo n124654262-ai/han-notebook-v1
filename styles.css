@@ -307,6 +307,29 @@ button:focus-visible {
   background: var(--soft);
 }
 
+.detail-edit-actions {
+  display: flex;
+  justify-content: flex-end;
+  margin-top: 10px;
+}
+
+.item-edit-form label {
+  display: block;
+  margin-top: 10px;
+}
+
+.item-edit-form label > span {
+  display: block;
+  margin-bottom: 5px;
+  color: #34413b;
+  font-size: 14px;
+  font-weight: 650;
+}
+
+.item-edit-form .form-actions {
+  margin-top: 12px;
+}
+
 .detail-list {
   margin: 0;
 }
