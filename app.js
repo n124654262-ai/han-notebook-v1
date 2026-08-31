@@ -904,7 +904,7 @@ function renderCalendar() {
   grid.replaceChildren();
   const weekdays = document.createElement("div");
   weekdays.className = "calendar-weekdays";
-  for (const day of ["日", "一", "二", "三", "四", "五", "六"]) {
+  for (const day of ["一", "二", "三", "四", "五", "六", "日"]) {
     const cell = document.createElement("div");
     cell.className = "calendar-weekday";
     cell.textContent = day;
@@ -912,7 +912,8 @@ function renderCalendar() {
   }
   grid.append(weekdays);
   const first = new Date(monthDate);
-  first.setDate(1 - first.getDay());
+  const mondayOffset = (first.getDay() + 6) % 7;
+  first.setDate(1 - mondayOffset);
   for (let week = 0; week < 6; week += 1) {
     const weekStart = addDays(first, week * 7);
     const row = document.createElement("div");

@@ -418,14 +418,11 @@ button:focus-visible {
   cursor: pointer;
 }
 
-.calendar-hint {
-  margin: 0;
-  padding: 8px 14px;
-  color: var(--muted);
-  font-size: 13px;
-}
-
 .calendar-quick-form {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: end;
+  gap: 9px;
   margin: 0 14px 10px;
   padding: 10px;
   border: 1px solid #dbe7e1;
@@ -445,7 +442,11 @@ button:focus-visible {
 }
 
 .calendar-quick-form .form-actions {
-  margin-top: 9px;
+  margin-top: 0;
+}
+
+.calendar-quick-form .primary-button {
+  white-space: nowrap;
 }
 
 .calendar-selection {
@@ -548,7 +549,8 @@ button:focus-visible {
   text-align: center;
 }
 
-.calendar-weekday:last-child {
+.calendar-weekday:nth-child(6),
+.calendar-weekday:nth-child(7) {
   background: #fff0f3;
 }
 
@@ -584,10 +586,12 @@ button:focus-visible {
   color: #aab4ae;
 }
 
+.calendar-day:nth-child(6),
 .calendar-day:nth-child(7) {
   background: #fff0f3;
 }
 
+.calendar-day:nth-child(6).is-outside,
 .calendar-day:nth-child(7).is-outside {
   background: #fff5f6;
 }
