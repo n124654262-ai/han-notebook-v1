@@ -616,6 +616,14 @@ button:focus-visible {
   align-items: center;
 }
 
+.calendar-mobile-edit {
+  display: none;
+}
+
+.calendar-mobile-edit[hidden] {
+  display: none !important;
+}
+
 .danger-text {
   color: var(--danger);
 }
@@ -758,20 +766,41 @@ button:focus-visible {
   position: absolute;
   z-index: 2;
   display: block;
-  height: 18px;
+  height: 14px;
   overflow: hidden;
-  padding: 1px 13px;
-  border: 0;
-  border-radius: 3px;
-  color: #ffffff;
-  background: var(--green);
+  padding: 0 16px;
+  border: 2px solid var(--green);
+  border-radius: 2px;
+  color: #17211d;
+  background: #d9eee4;
   font-size: 11px;
-  line-height: 15px;
+  font-weight: 600;
+  line-height: 10px;
   text-align: left;
   text-overflow: ellipsis;
   white-space: nowrap;
   cursor: grab;
   touch-action: none;
+}
+
+.calendar-block::before,
+.calendar-block::after {
+  position: absolute;
+  top: 0;
+  color: #17211d;
+  font-weight: 700;
+  line-height: 10px;
+  pointer-events: none;
+}
+
+.calendar-block::before {
+  left: 3px;
+  content: "||";
+}
+
+.calendar-block::after {
+  right: 3px;
+  content: "||";
 }
 
 .calendar-block:active {
@@ -784,8 +813,8 @@ button:focus-visible {
 }
 
 .calendar-block.is-preview {
-  border: 1px dashed #176b52;
-  color: #176b52;
+  border: 2px dashed var(--green);
+  color: #17211d;
   background: #d9eee4;
   opacity: 0.78;
   pointer-events: none;
@@ -931,10 +960,54 @@ button:focus-visible {
     margin-left: 4px;
   }
 
-  .calendar-block {
-    padding-right: 10px;
-    padding-left: 10px;
+  .calendar-quick-form {
+    display: none;
+  }
+
+  .calendar-selection {
+    flex-wrap: wrap;
+    align-items: flex-start;
+  }
+
+  .calendar-selection > #calendarSelectionText {
+    flex: 1 1 100%;
+  }
+
+  .calendar-mobile-edit {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr)) auto;
+    align-items: end;
+    flex: 1 1 100%;
+    gap: 6px;
+  }
+
+  .calendar-mobile-edit[hidden] {
+    display: none !important;
+  }
+
+  .calendar-mobile-edit label {
+    display: grid;
+    gap: 2px;
+    color: var(--muted);
     font-size: 11px;
+  }
+
+  .calendar-mobile-edit input {
+    min-height: 32px;
+    padding: 4px 6px;
+    font-size: 12px;
+  }
+
+  .calendar-mobile-edit .primary-button {
+    min-height: 32px;
+    padding: 4px 8px;
+    white-space: nowrap;
+  }
+
+  .calendar-block {
+    padding-right: 14px;
+    padding-left: 14px;
+    font-size: 10px;
   }
 }
 

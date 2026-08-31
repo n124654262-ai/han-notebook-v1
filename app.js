@@ -60,6 +60,10 @@ const elements = {
   calendarQuickForm: document.querySelector("#calendarQuickForm"),
   calendarSelection: document.querySelector("#calendarSelection"),
   calendarSelectionText: document.querySelector("#calendarSelectionText"),
+  calendarMobileEdit: document.querySelector("#calendarMobileEdit"),
+  calendarEditStart: document.querySelector("#calendarEditStart"),
+  calendarEditEnd: document.querySelector("#calendarEditEnd"),
+  calendarSaveDates: document.querySelector("#calendarSaveDates"),
   calendarClearSelection: document.querySelector("#calendarClearSelection"),
   calendarDeleteBlock: document.querySelector("#calendarDeleteBlock"),
   calendarGrid: document.querySelector("#calendarGrid"),
@@ -1077,6 +1081,32 @@ async function deleteSelectedCalendarBlock() {
   }
 }
 
+async function saveCalendarDates() {
+  const block = state.calendar.blocks.find((candidate) => candidate.id === state.calendar.selectedBlockId);
+  if (!block) return;
+  const start = String(elements.calendarEditStart.value || "");
+  const end = String(elements.calendarEditEnd.value || "");
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(start) || !/^\d{4}-\d{2}-\d{2}$/.test(end) || start > end) {
+    showNotice("請確認開始日與結束日", true);
+    return;
+  }
+  elements.calendarSaveDates.disabled = true;
+  try {
+    await api(`/api/calendar/blocks/${block.id}`, {
+      method: "PATCH",
+      body: JSON.stringify({ start_date: start, end_date: end }),
+    });
+    await saveCalendarWorkdayNote(block.item_id, start, end);
+    showNotice("已更新行事曆時間");
+    await loadCalendar();
+  } catch (error) {
+    showNotice(`更新行事曆失敗：${error.message}`, true);
+    renderCalendar();
+  } finally {
+    elements.calendarSaveDates.disabled = false;
+  }
+}
+
 function setManualForm(open) {
   elements.manualForm.hidden = !open;
   elements.manualToggle.setAttribute("aria-expanded", String(open));
@@ -1171,6 +1201,12 @@ function renderCalendar() {
       ? `已選取：${selectedBlock.title}（${selectedBlock.start_date}～${selectedBlock.end_date}）`
       : selectedTitle ? `準備安排：${selectedTitle}` : "";
   elements.calendarDeleteBlock.hidden = !selectedBlock || Boolean(state.calendar.drag);
+  const mobileEditing = Boolean(selectedBlock && !preview && !state.calendar.drag);
+  elements.calendarMobileEdit.hidden = !mobileEditing;
+  if (mobileEditing) {
+    elements.calendarEditStart.value = selectedBlock.start_date;
+    elements.calendarEditEnd.value = selectedBlock.end_date;
+  }
   const grid = elements.calendarGrid;
   grid.replaceChildren();
   const weekdays = document.createElement("div");
@@ -1571,6 +1607,7 @@ elements.manualForm.addEventListener("submit", async (event) => {
 elements.calendarPrevious.addEventListener("click", () => changeMonth(-1));
 elements.calendarNext.addEventListener("click", () => changeMonth(1));
 elements.calendarQuickForm.addEventListener("submit", (event) => void createQuickCalendarIdea(event));
+elements.calendarSaveDates.addEventListener("click", () => void saveCalendarDates());
 elements.calendarClearSelection.addEventListener("click", () => {
   state.calendar.selectedItemId = null;
   state.calendar.selectedBlockId = null;

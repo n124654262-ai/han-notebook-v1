@@ -5,12 +5,12 @@
     <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
     <meta name="theme-color" content="#176b52">
     <title>HAN 筆記本</title>
-<link rel="stylesheet" href="styles.css?v=delete-fix-0901-1">
+<link rel="stylesheet" href="styles.css?v=calendar-mobile-0901-1">
     <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-app-compat.js"></script>
     <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-auth-compat.js"></script>
     <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore-compat.js"></script>
     <script src="firebase-config.js"></script>
-    <script src="app.js?v=delete-fix-0901-1" defer></script>
+    <script src="app.js?v=calendar-mobile-0901-1" defer></script>
   </head>
   <body>
     <div class="app-topbar">
@@ -87,8 +87,7 @@
         </div>
         <form id="calendarQuickForm" class="calendar-quick-form">
           <label>
-            <span>直接新增行事曆想法</span>
-            <input name="title" type="text" maxlength="240" placeholder="例如：新光｜報價">
+            <input name="title" type="text" maxlength="240" aria-label="新增行事曆想法" placeholder="例如：新光｜報價">
           </label>
           <div class="form-actions">
             <button type="submit" class="primary-button">新增並安排</button>
@@ -96,6 +95,17 @@
         </form>
         <div id="calendarSelection" class="calendar-selection" hidden>
           <span id="calendarSelectionText"></span>
+          <div id="calendarMobileEdit" class="calendar-mobile-edit" hidden>
+            <label>
+              <span>開始日</span>
+              <input id="calendarEditStart" type="date">
+            </label>
+            <label>
+              <span>結束日</span>
+              <input id="calendarEditEnd" type="date">
+            </label>
+            <button id="calendarSaveDates" class="primary-button" type="button">儲存日期</button>
+          </div>
           <span class="calendar-selection-actions">
             <button id="calendarClearSelection" class="text-button" type="button">清除選取</button>
             <button id="calendarDeleteBlock" class="text-button danger-text" type="button" hidden>刪除時間條</button>
