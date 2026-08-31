@@ -1595,8 +1595,7 @@ elements.manualForm.addEventListener("submit", async (event) => {
   event.preventDefault();
   const data = new FormData(elements.manualForm);
   const issue = String(data.get("issue") || "").trim();
-  const requestedAction = String(data.get("requested_action") || "").trim();
-  const subject = [issue, requestedAction].filter(Boolean).join("－");
+  const subject = issue;
   try {
     await api("/api/items", {
       method: "POST",
