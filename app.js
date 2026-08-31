@@ -998,9 +998,9 @@ function createEmployeeReplyEditor(item) {
   wrapper.append(createEmployeeConversation(item));
   const label = document.createElement("label");
   label.className = "notes-label";
-  label.textContent = "給員工的回覆";
   const textarea = document.createElement("textarea");
   textarea.className = "employee-reply-textarea";
+  textarea.setAttribute("aria-label", "輸入回覆");
   textarea.rows = 1;
   textarea.maxLength = 20000;
   textarea.value = "";

@@ -617,7 +617,7 @@ button:focus-visible {
 .employee-reply-textarea {
   height: 38px;
   min-height: 38px;
-  overflow-y: auto;
+  overflow-y: hidden;
   resize: none;
   line-height: 1.35;
 }
