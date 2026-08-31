@@ -1036,6 +1036,18 @@ button:focus-visible {
 }
 
 @media (min-width: 761px) {
+  main {
+    max-width: none;
+    padding-right: clamp(16px, 3vw, 48px);
+    padding-left: clamp(16px, 3vw, 48px);
+  }
+
+  .calendar-quick-form,
+  .calendar-grid {
+    margin-right: 0;
+    margin-left: 0;
+  }
+
   body {
     border-right: 1px solid var(--line);
     border-left: 1px solid var(--line);
