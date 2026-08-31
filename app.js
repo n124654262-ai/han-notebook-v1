@@ -354,7 +354,22 @@ async function remoteApi(path, options = {}) {
     if (!item.source_submission_id) throw new Error("這筆資料沒有員工留言來源");
     const reply = String(body.reply || "").trim().slice(0, 20000);
     const submissionRef = firebase.firestore().collection("public_submissions").doc(item.source_submission_id);
+    const submissionSnapshot = await submissionRef.get();
+    if (!submissionSnapshot.exists) throw new Error("找不到員工留言來源");
+    const previousReply = String(submissionSnapshot.data().han_reply || "").trim();
+    const previousReplyAt = submissionSnapshot.data().replied_at || submissionSnapshot.data().created_at || now;
+    const previousHanMessages = previousReply
+      ? await submissionRef.collection("messages").where("sender_role", "==", "han").get()
+      : { docs: [] };
     const batch = remote.db.batch();
+    if (previousReply && !previousHanMessages.docs.some((doc) => String(doc.data().text || "").trim() === previousReply)) {
+      batch.set(submissionRef.collection("messages").doc(remoteId()), {
+        sender_role: "han",
+        sender_uid: remote.user.uid,
+        text: previousReply,
+        created_at: previousReplyAt,
+      });
+    }
     batch.update(submissionRef, {
       han_reply: reply,
       replied_at: reply ? now : null,
