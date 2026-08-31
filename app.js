@@ -149,7 +149,14 @@ function remoteRefreshDocuments() {
 function publicSubmissionForItem(item) {
   if (item.source_submission_id) return remote.publicSubmissions.get(item.source_submission_id) || null;
   for (const [submissionId, submission] of remote.publicSubmissions.entries()) {
-    if (submission.item_id === item.id) {
+    const sameSource = submission.item_id === item.id;
+    const sameFields = String(submission.object_name || "") === String(item.object_name || "")
+      && String(submission.subject || "") === String(item.subject || "")
+      && String(submission.contact_name || "") === String(item.contact_name || "")
+      && String(submission.phone || "") === String(item.phone || "")
+      && String(submission.resource_location || "") === String(item.resource_location || "")
+      && (!item.created_at || String(submission.created_at || "") === String(item.created_at));
+    if (sameSource || sameFields) {
       item.source_submission_id = submissionId;
       item.employee_reply = submission.han_reply || "";
       item.employee_reply_at = submission.replied_at || "";
