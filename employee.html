@@ -1,0 +1,21 @@
+<!doctype html>
+<html lang="zh-Hant">
+<head>
+  <meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <meta name="theme-color" content="#176b52"><title>HAN 員工填寫</title>
+  <link rel="stylesheet" href="styles.css?v=employee-0831">
+  <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-app-compat.js"></script>
+  <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-auth-compat.js"></script>
+  <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore-compat.js"></script>
+  <script src="firebase-config.js"></script><script src="submit.js?v=employee-0831" defer></script>
+</head>
+<body><header class="app-header"><h1>HAN 員工填寫</h1></header><main>
+  <section class="manual-entry"><form id="submitForm" class="manual-form">
+    <label><span>客戶／地點</span><input name="object_name" maxlength="120"></label>
+    <div class="two-columns"><label><span>聯絡人</span><input name="contact_name" maxlength="120"></label><label><span>電話</span><input name="phone" maxlength="80" inputmode="tel"></label></div>
+    <label><span>要做什麼</span><textarea name="subject" rows="3" maxlength="240"></textarea></label>
+    <label><span>需要我做什麼</span><input name="requested_action" maxlength="240"></label>
+    <label><span>相關資料在哪裡</span><input name="resource_location" maxlength="240"></label>
+    <div class="form-actions"><button class="primary-button" type="submit">存入暫存區</button></div>
+  </form><p id="submitStatus" role="status" aria-live="polite"></p></section>
+</main></body></html>

@@ -38,24 +38,9 @@
     </div>
 
     <main>
-      <section id="publicEntry" class="public-entry" aria-labelledby="publicEntryToggle">
-        <button id="publicEntryToggle" class="manual-toggle" type="button" aria-expanded="false">＋ 員工留言入口</button>
-        <div id="publicEntryFormWrap" hidden>
-          <p class="public-entry-hint">員工填寫後送出，資料會進入負責人的暫存區。</p>
-          <form id="submitForm" class="manual-form">
-            <label><span>客戶／地點</span><input name="object_name" maxlength="120"></label>
-            <div class="two-columns"><label><span>聯絡人</span><input name="contact_name" maxlength="120"></label><label><span>電話</span><input name="phone" maxlength="80" inputmode="tel"></label></div>
-            <label><span>要做什麼</span><textarea name="subject" rows="3" maxlength="240"></textarea></label>
-            <label><span>需要我做什麼</span><input name="requested_action" maxlength="240"></label>
-            <label><span>相關資料在哪裡</span><input name="resource_location" maxlength="240"></label>
-            <div class="form-actions"><button class="primary-button" type="submit">送出留言</button></div>
-          </form>
-          <p id="submitStatus" role="status" aria-live="polite"></p>
-        </div>
-      </section>
       <section id="manualEntry" class="manual-entry" aria-labelledby="manualToggle">
         <button id="manualToggle" class="manual-toggle" type="button" aria-expanded="false">
-          ＋ 手動輸入
+          ＋ 新增
         </button>
         <form id="manualForm" class="manual-form" hidden>
           <label>
@@ -144,6 +129,5 @@
         <p id="emptyState" class="empty-state" hidden>目前沒有資料</p>
       </section>
     </main>
-    <script src="submit.js?v=external-0831" defer></script>
   </body>
 </html>
