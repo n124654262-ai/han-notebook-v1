@@ -865,14 +865,21 @@ function createEmployeeConversation(item) {
     return section;
   }
   messages.sort((a, b) => String(a.created_at || "").localeCompare(String(b.created_at || "")));
+  const log = document.createElement("div");
+  log.className = "employee-chat-log";
   messages.forEach((message) => {
     const line = document.createElement("p");
-    line.className = `employee-conversation-line ${message.sender_role === "employee" ? "is-employee" : "is-han"}`;
+    line.className = `employee-chat-message ${message.sender_role === "employee" ? "is-employee" : "is-han"}`;
     const sender = document.createElement("strong");
+    sender.className = "employee-chat-sender";
     sender.textContent = message.sender_role === "employee" ? "員工" : "HAN";
-    line.append(sender, document.createTextNode(String(message.text || "")));
-    section.append(line);
+    const bubble = document.createElement("span");
+    bubble.className = "employee-chat-bubble";
+    bubble.textContent = String(message.text || "");
+    line.append(sender, bubble);
+    log.append(line);
   });
+  section.append(log);
   return section;
 }
 

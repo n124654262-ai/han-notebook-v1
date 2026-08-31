@@ -513,17 +513,57 @@ button:focus-visible {
   font-size: 14px;
 }
 
-.employee-conversation-line,
-.employee-conversation-empty {
-  margin: 4px 0 0;
+.employee-chat-log {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.employee-chat-message {
+  display: flex;
+  flex-direction: column;
+  max-width: 88%;
+  margin: 0;
+}
+
+.employee-chat-message.is-employee {
+  align-self: flex-end;
+  align-items: flex-end;
+}
+
+.employee-chat-message.is-han {
+  align-self: flex-start;
+  align-items: flex-start;
+}
+
+.employee-chat-sender {
+  margin: 0 8px 2px;
+  color: #60706a;
+  font-size: 11px;
+}
+
+.employee-chat-bubble {
+  display: block;
+  padding: 6px 9px;
+  border: 1px solid #d7e3de;
+  border-radius: 12px;
+  color: #17211d;
+  background: #ffffff;
   white-space: pre-wrap;
   overflow-wrap: anywhere;
   font-size: 14px;
 }
 
-.employee-conversation-line strong {
-  margin-right: 6px;
+.employee-chat-message.is-employee .employee-chat-bubble {
+  border-color: #b8d8c9;
   color: #0f503d;
+  background: #dcebe4;
+}
+
+.employee-conversation-empty {
+  margin: 0;
+  color: #60706a;
+  font-size: 13px;
 }
 
 .employee-reply-editor .notes-label {
