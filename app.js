@@ -87,6 +87,34 @@ const remote = {
   publicSubmissionMessageUnsubscribers: new Map(),
 };
 
+const chatScrollStates = new Map();
+const chatScrollToBottom = new Set();
+
+function rememberMainChatScroll() {
+  elements.itemList.querySelectorAll(".item-row[data-item-id]").forEach((row) => {
+    const log = row.querySelector(".employee-chat-log");
+    if (!log) return;
+    const distanceFromBottom = log.scrollHeight - log.scrollTop - log.clientHeight;
+    chatScrollStates.set(row.dataset.itemId, {
+      scrollTop: log.scrollTop,
+      atBottom: distanceFromBottom < 24,
+    });
+  });
+}
+
+function restoreMainChatScroll() {
+  elements.itemList.querySelectorAll(".item-row[data-item-id]").forEach((row) => {
+    const log = row.querySelector(".employee-chat-log");
+    if (!log) return;
+    const itemId = row.dataset.itemId;
+    const previous = chatScrollStates.get(itemId);
+    const forceBottom = chatScrollToBottom.has(itemId);
+    if (forceBottom || previous?.atBottom) log.scrollTop = log.scrollHeight;
+    else if (previous) log.scrollTop = Math.min(previous.scrollTop, log.scrollHeight);
+    if (forceBottom) chatScrollToBottom.delete(itemId);
+  });
+}
+
 function remoteCollection(name) {
   if (!remote.user) throw new Error("請先使用 Google 帳號登入");
   return remote.db.collection("users").doc(remote.user.uid).collection(name);
@@ -663,6 +691,7 @@ function render() {
 }
 
 function renderList() {
+  rememberMainChatScroll();
   elements.listHeading.textContent = state.view === "inbox" ? "暫存區" : state.view === "todo" ? "待辦" : "封存區";
   elements.itemList.replaceChildren();
   const items = activeItems();
@@ -689,6 +718,7 @@ function renderList() {
     actions.append(count, button);
     elements.listSection.append(actions);
   }
+  restoreMainChatScroll();
 }
 
 function createItemRow(item) {
@@ -719,7 +749,10 @@ function createItemRow(item) {
   title.addEventListener("click", () => {
     const collapsing = state.expandedIds.has(item.id);
     if (collapsing) state.expandedIds.delete(item.id);
-    else state.expandedIds.add(item.id);
+    else {
+      state.expandedIds.add(item.id);
+      chatScrollToBottom.add(item.id);
+    }
     if (collapsing && state.editingId === item.id) state.editingId = null;
     render();
   });
@@ -1011,6 +1044,7 @@ function createEmployeeReplyEditor(item) {
   button.className = "action-button reply-button";
   button.textContent = "送出回覆";
   button.addEventListener("click", async () => {
+    chatScrollToBottom.add(item.id);
     button.disabled = true;
     try {
       const data = await api(`/api/items/${item.id}/reply`, {
@@ -1021,7 +1055,12 @@ function createEmployeeReplyEditor(item) {
       textarea.value = "";
       autoGrowTextarea(textarea);
       showNotice("已送出回覆");
+      requestAnimationFrame(() => {
+        const log = elements.itemList.querySelector(`.item-row[data-item-id="${CSS.escape(item.id)}"] .employee-chat-log`);
+        if (log) log.scrollTop = log.scrollHeight;
+      });
     } catch (error) {
+      chatScrollToBottom.delete(item.id);
       showNotice(`回覆員工失敗：${error.message}`, true);
     } finally { button.disabled = false; }
   });
