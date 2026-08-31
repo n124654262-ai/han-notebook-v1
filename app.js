@@ -158,6 +158,23 @@ function attachRemoteListeners() {
     render();
     setConnection(true, "已同步");
   }, () => setConnection(false, "同步中斷，稍後重試")));
+  // 員工公開留言：由負責人登入的瀏覽器匯入自己的暫存區。
+  remote.unsubscribers.push(firebase.firestore().collection("public_submissions")
+    .where("owner_email", "==", remote.user.email).onSnapshot((snapshot) => {
+      snapshot.docChanges().filter((change) => change.type === "added").forEach(({ doc }) => {
+        const submission = doc.data();
+        if (submission.imported_at) return;
+        const item = {
+          id: remoteId(), object_name: submission.object_name || "", subject: submission.subject || "",
+          contact_name: submission.contact_name || "", phone: submission.phone || "",
+          original_message: "員工公開留言", resource_location: submission.resource_location || "",
+          my_notes: submission.requested_action ? `需要我做什麼：${submission.requested_action}` : "",
+          source_type: "external", in_inbox: true, in_todo: false, in_archive: false,
+          note_revision: 0, created_at: submission.created_at || remoteNow(), updated_at: remoteNow(),
+        };
+        remoteCollection("items").doc(item.id).set(item).then(() => doc.ref.update({ imported_by: remote.user.uid, imported_at: remoteNow(), item_id: item.id })).catch(() => {});
+      });
+    }, () => {}));
   remote.unsubscribers.push(remoteCollection("calendar_blocks").onSnapshot((snapshot) => {
     remote.blocks = snapshot.docs.map((doc) => remoteDoc(doc.data()));
     remoteRefreshCalendar();
