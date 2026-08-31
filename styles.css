@@ -616,12 +616,35 @@ button:focus-visible {
   align-items: center;
 }
 
-.calendar-mobile-edit {
-  display: none;
+.calendar-date-edit {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 180px)) auto;
+  align-items: end;
+  flex: 1 1 100%;
+  gap: 6px;
 }
 
-.calendar-mobile-edit[hidden] {
+.calendar-date-edit[hidden] {
   display: none !important;
+}
+
+.calendar-date-edit label {
+  display: grid;
+  gap: 2px;
+  color: var(--muted);
+  font-size: 11px;
+}
+
+.calendar-date-edit input {
+  min-height: 32px;
+  padding: 4px 6px;
+  font-size: 12px;
+}
+
+.calendar-date-edit .primary-button {
+  min-height: 32px;
+  padding: 4px 8px;
+  white-space: nowrap;
 }
 
 .danger-text {
@@ -766,30 +789,43 @@ button:focus-visible {
   position: absolute;
   z-index: 2;
   display: block;
-  height: 14px;
-  overflow: hidden;
-  padding: 0 16px;
-  border: 2px solid var(--green);
-  border-radius: 2px;
+  height: 6px;
+  overflow: visible;
+  padding: 0 14px;
+  border: 0;
+  border-radius: 3px;
   color: #17211d;
-  background: #d9eee4;
+  background: #8fc5ab;
   font-size: 11px;
   font-weight: 600;
-  line-height: 10px;
+  line-height: 1;
   text-align: left;
-  text-overflow: ellipsis;
   white-space: nowrap;
   cursor: grab;
   touch-action: none;
 }
 
+.calendar-block-label {
+  position: absolute;
+  top: 50%;
+  right: 14px;
+  left: 14px;
+  overflow: hidden;
+  color: #17211d;
+  line-height: 14px;
+  text-overflow: ellipsis;
+  transform: translateY(-50%);
+  pointer-events: none;
+}
+
 .calendar-block::before,
 .calendar-block::after {
   position: absolute;
-  top: 0;
+  top: 50%;
   color: #17211d;
   font-weight: 700;
-  line-height: 10px;
+  line-height: 14px;
+  transform: translateY(-50%);
   pointer-events: none;
 }
 
@@ -813,9 +849,9 @@ button:focus-visible {
 }
 
 .calendar-block.is-preview {
-  border: 2px dashed var(--green);
+  border: 0;
   color: #17211d;
-  background: #d9eee4;
+  background: #b8ddca;
   opacity: 0.78;
   pointer-events: none;
 }
@@ -956,8 +992,11 @@ button:focus-visible {
   }
 
   .calendar-grid {
-    margin-right: 4px;
-    margin-left: 4px;
+    width: 100%;
+    margin: 0;
+    border-right: 0;
+    border-left: 0;
+    touch-action: pan-y;
   }
 
   .calendar-quick-form {
@@ -965,49 +1004,25 @@ button:focus-visible {
   }
 
   .calendar-selection {
-    flex-wrap: wrap;
-    align-items: flex-start;
-  }
-
-  .calendar-selection > #calendarSelectionText {
-    flex: 1 1 100%;
-  }
-
-  .calendar-mobile-edit {
-    display: grid;
-    grid-template-columns: repeat(2, minmax(0, 1fr)) auto;
-    align-items: end;
-    flex: 1 1 100%;
-    gap: 6px;
-  }
-
-  .calendar-mobile-edit[hidden] {
     display: none !important;
   }
 
-  .calendar-mobile-edit label {
-    display: grid;
-    gap: 2px;
-    color: var(--muted);
-    font-size: 11px;
-  }
-
-  .calendar-mobile-edit input {
-    min-height: 32px;
-    padding: 4px 6px;
-    font-size: 12px;
-  }
-
-  .calendar-mobile-edit .primary-button {
-    min-height: 32px;
-    padding: 4px 8px;
-    white-space: nowrap;
+  .calendar-date-edit {
+    display: none !important;
   }
 
   .calendar-block {
-    padding-right: 14px;
-    padding-left: 14px;
-    font-size: 10px;
+    cursor: default;
+    touch-action: pan-y;
+  }
+
+  .calendar-day {
+    cursor: default;
+    touch-action: pan-y;
+  }
+
+  .calendar-resize-handle {
+    display: none;
   }
 }
 

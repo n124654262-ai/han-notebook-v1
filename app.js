@@ -28,6 +28,7 @@ const state = {
     selectedItemId: null,
     selectedBlockId: null,
     drag: null,
+    swipeStart: null,
   },
   resources: {
     documents: [],
@@ -60,7 +61,7 @@ const elements = {
   calendarQuickForm: document.querySelector("#calendarQuickForm"),
   calendarSelection: document.querySelector("#calendarSelection"),
   calendarSelectionText: document.querySelector("#calendarSelectionText"),
-  calendarMobileEdit: document.querySelector("#calendarMobileEdit"),
+  calendarDateEdit: document.querySelector("#calendarDateEdit"),
   calendarEditStart: document.querySelector("#calendarEditStart"),
   calendarEditEnd: document.querySelector("#calendarEditEnd"),
   calendarSaveDates: document.querySelector("#calendarSaveDates"),
@@ -1067,6 +1068,7 @@ async function removeCalendarWorkdayNote(itemId) {
 }
 
 async function deleteSelectedCalendarBlock() {
+  if (isSmallCalendarScreen()) return;
   const block = state.calendar.blocks.find((candidate) => candidate.id === state.calendar.selectedBlockId);
   if (!block) return;
   if (!window.confirm(`確定刪除「${block.title}」的行事曆時間條？`)) return;
@@ -1082,6 +1084,7 @@ async function deleteSelectedCalendarBlock() {
 }
 
 async function saveCalendarDates() {
+  if (isSmallCalendarScreen()) return;
   const block = state.calendar.blocks.find((candidate) => candidate.id === state.calendar.selectedBlockId);
   if (!block) return;
   const start = String(elements.calendarEditStart.value || "");
@@ -1179,6 +1182,33 @@ function calendarMonthDate() {
   return new Date(year, month - 1, 1);
 }
 
+function isSmallCalendarScreen() {
+  return window.matchMedia("(max-width: 420px)").matches;
+}
+
+function startCalendarSwipe(event) {
+  if (!isSmallCalendarScreen()) return;
+  const touch = event.touches[0];
+  if (!touch) return;
+  state.calendar.swipeStart = { x: touch.clientX, y: touch.clientY };
+}
+
+function finishCalendarSwipe(event) {
+  const start = state.calendar.swipeStart;
+  state.calendar.swipeStart = null;
+  if (!isSmallCalendarScreen() || !start) return;
+  const touch = event.changedTouches[0];
+  if (!touch) return;
+  const deltaX = touch.clientX - start.x;
+  const deltaY = touch.clientY - start.y;
+  if (Math.abs(deltaX) < 48 || Math.abs(deltaX) < Math.abs(deltaY) * 1.2) return;
+  changeMonth(deltaX < 0 ? -1 : 1);
+}
+
+function cancelCalendarSwipe() {
+  state.calendar.swipeStart = null;
+}
+
 function changeMonth(delta) {
   const next = calendarMonthDate();
   next.setMonth(next.getMonth() + delta);
@@ -1191,6 +1221,7 @@ function changeMonth(delta) {
 function renderCalendar() {
   const monthDate = calendarMonthDate();
   elements.calendarHeading.textContent = `${monthDate.getFullYear()} 年 ${monthDate.getMonth() + 1} 月`;
+  if (isSmallCalendarScreen() && elements.notice.textContent === "已更新行事曆時間") showNotice("");
   const selectedTitle = calendarSelectedTitle();
   const selectedBlock = state.calendar.blocks.find((block) => block.id === state.calendar.selectedBlockId);
   const preview = calendarDragPreview();
@@ -1201,9 +1232,9 @@ function renderCalendar() {
       ? `已選取：${selectedBlock.title}（${selectedBlock.start_date}～${selectedBlock.end_date}）`
       : selectedTitle ? `準備安排：${selectedTitle}` : "";
   elements.calendarDeleteBlock.hidden = !selectedBlock || Boolean(state.calendar.drag);
-  const mobileEditing = Boolean(selectedBlock && !preview && !state.calendar.drag);
-  elements.calendarMobileEdit.hidden = !mobileEditing;
-  if (mobileEditing) {
+  const dateEditing = Boolean(selectedBlock && !preview && !state.calendar.drag && !isSmallCalendarScreen());
+  elements.calendarDateEdit.hidden = !dateEditing;
+  if (dateEditing) {
     elements.calendarEditStart.value = selectedBlock.start_date;
     elements.calendarEditEnd.value = selectedBlock.end_date;
   }
@@ -1284,8 +1315,11 @@ function appendCalendarBar(row, block, weekStart, preview) {
   bar.style.width = `${(dayCount / 7) * 100}%`;
   const lane = calendarLane(row, block);
   bar.dataset.lane = String(lane);
-  bar.style.top = `${24 + lane * 24}px`;
-  bar.textContent = block.title;
+  bar.style.top = `${22 + lane * 16}px`;
+  const label = document.createElement("span");
+  label.className = "calendar-block-label";
+  label.textContent = block.title;
+  bar.append(label);
   if (!preview) {
     bar.addEventListener("pointerdown", (event) => beginCalendarBlock(event, block));
     bar.addEventListener("click", () => {
@@ -1347,7 +1381,7 @@ function calendarSelectedTitle() {
 }
 
 function beginCalendarCreate(event, dateValue) {
-  if (event.button !== 0 || !state.calendar.selectedItemId) return;
+  if (isSmallCalendarScreen() || event.button !== 0 || !state.calendar.selectedItemId) return;
   event.preventDefault();
   state.calendar.drag = {
     kind: "create",
@@ -1363,6 +1397,12 @@ function beginCalendarCreate(event, dateValue) {
 }
 
 function beginCalendarBlock(event, block) {
+  if (isSmallCalendarScreen()) {
+    state.calendar.selectedBlockId = block.id;
+    state.calendar.selectedItemId = null;
+    state.calendar.drag = null;
+    return;
+  }
   event.preventDefault();
   event.stopPropagation();
   const day = dateFromPoint(event.clientX, event.clientY) || block.start_date;
@@ -1608,6 +1648,9 @@ elements.calendarPrevious.addEventListener("click", () => changeMonth(-1));
 elements.calendarNext.addEventListener("click", () => changeMonth(1));
 elements.calendarQuickForm.addEventListener("submit", (event) => void createQuickCalendarIdea(event));
 elements.calendarSaveDates.addEventListener("click", () => void saveCalendarDates());
+elements.calendarGrid.addEventListener("touchstart", startCalendarSwipe, { passive: true });
+elements.calendarGrid.addEventListener("touchend", finishCalendarSwipe, { passive: true });
+elements.calendarGrid.addEventListener("touchcancel", cancelCalendarSwipe, { passive: true });
 elements.calendarClearSelection.addEventListener("click", () => {
   state.calendar.selectedItemId = null;
   state.calendar.selectedBlockId = null;
