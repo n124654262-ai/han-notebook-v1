@@ -1006,8 +1006,6 @@ function createEmployeeReplyEditor(item) {
   textarea.value = "";
   autoGrowTextarea(textarea);
   textarea.addEventListener("input", () => autoGrowTextarea(textarea));
-  const actions = document.createElement("div");
-  actions.className = "reply-actions";
   const button = document.createElement("button");
   button.type = "button";
   button.className = "action-button reply-button";
