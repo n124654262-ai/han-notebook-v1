@@ -83,37 +83,7 @@ const remote = {
   blocks: [],
   documents: [],
   publicSubmissions: new Map(),
-  publicSubmissionMessages: new Map(),
-  publicSubmissionMessageUnsubscribers: new Map(),
 };
-
-const chatScrollStates = new Map();
-const chatScrollToBottom = new Set();
-
-function rememberMainChatScroll() {
-  elements.itemList.querySelectorAll(".item-row[data-item-id]").forEach((row) => {
-    const log = row.querySelector(".employee-chat-log");
-    if (!log) return;
-    const distanceFromBottom = log.scrollHeight - log.scrollTop - log.clientHeight;
-    chatScrollStates.set(row.dataset.itemId, {
-      scrollTop: log.scrollTop,
-      atBottom: distanceFromBottom < 24,
-    });
-  });
-}
-
-function restoreMainChatScroll() {
-  elements.itemList.querySelectorAll(".item-row[data-item-id]").forEach((row) => {
-    const log = row.querySelector(".employee-chat-log");
-    if (!log) return;
-    const itemId = row.dataset.itemId;
-    const previous = chatScrollStates.get(itemId);
-    const forceBottom = chatScrollToBottom.has(itemId);
-    if (forceBottom || previous?.atBottom) log.scrollTop = log.scrollHeight;
-    else if (previous) log.scrollTop = Math.min(previous.scrollTop, log.scrollHeight);
-    if (forceBottom) chatScrollToBottom.delete(itemId);
-  });
-}
 
 function remoteCollection(name) {
   if (!remote.user) throw new Error("請先使用 Google 帳號登入");
@@ -176,30 +146,6 @@ function remoteRefreshDocuments() {
     .sort((a, b) => `${b.document_date}${b.document_name}`.localeCompare(`${a.document_date}${a.document_name}`));
 }
 
-function syncPublicSubmissionMessageListeners(submissions) {
-  const visibleIds = new Set(submissions.map(({ id }) => id));
-  for (const [id, unsubscribe] of remote.publicSubmissionMessageUnsubscribers) {
-    if (!visibleIds.has(id)) {
-      unsubscribe();
-      remote.publicSubmissionMessageUnsubscribers.delete(id);
-      remote.publicSubmissionMessages.delete(id);
-    }
-  }
-  submissions.forEach(({ id }) => {
-    if (remote.publicSubmissionMessageUnsubscribers.has(id)) return;
-    const unsubscribe = firebase.firestore().collection("public_submissions").doc(id).collection("messages")
-      .orderBy("created_at")
-      .onSnapshot((snapshot) => {
-        remote.publicSubmissionMessages.set(id, snapshot.docs.map((doc) => ({ id: doc.id, ...doc.data() })));
-        remote.items.forEach((item) => {
-          if (item.source_submission_id === id) item.employee_conversation = remote.publicSubmissionMessages.get(id) || [];
-        });
-        if (state.expandedIds.size) render();
-      }, () => {});
-    remote.publicSubmissionMessageUnsubscribers.set(id, unsubscribe);
-  });
-}
-
 function publicSubmissionForItem(item) {
   if (item.source_submission_id) return remote.publicSubmissions.get(item.source_submission_id) || null;
   for (const [submissionId, submission] of remote.publicSubmissions.entries()) {
@@ -212,9 +158,6 @@ function publicSubmissionForItem(item) {
       && (!item.created_at || String(submission.created_at || "") === String(item.created_at));
     if (sameSource || sameFields) {
       item.source_submission_id = submissionId;
-      item.employee_reply = submission.han_reply || "";
-      item.employee_reply_at = submission.replied_at || "";
-      item.employee_conversation = remote.publicSubmissionMessages.get(submissionId) || [];
       return submission;
     }
   }
@@ -223,19 +166,11 @@ function publicSubmissionForItem(item) {
 
 function attachRemoteListeners() {
   for (const unsubscribe of remote.unsubscribers) unsubscribe();
-  for (const unsubscribe of remote.publicSubmissionMessageUnsubscribers.values()) unsubscribe();
-  remote.publicSubmissionMessageUnsubscribers.clear();
-  remote.publicSubmissionMessages.clear();
   remote.unsubscribers = [];
   remote.unsubscribers.push(remoteCollection("items").onSnapshot((snapshot) => {
     remote.items = snapshot.docs.map((doc) => {
       const item = remoteDoc(doc.data());
-      const submission = publicSubmissionForItem(item);
-      if (submission) {
-        item.employee_reply = submission.han_reply || "";
-        item.employee_reply_at = submission.replied_at || "";
-        item.employee_conversation = remote.publicSubmissionMessages.get(item.source_submission_id) || [];
-      }
+      publicSubmissionForItem(item);
       return item;
     });
     state.inboxItems = remoteItemList("inbox");
@@ -249,23 +184,13 @@ function attachRemoteListeners() {
   remote.unsubscribers.push(firebase.firestore().collection("public_submissions")
     .where("owner_email", "==", remote.user.email).onSnapshot((snapshot) => {
       snapshot.docs.forEach((doc) => remote.publicSubmissions.set(doc.id, doc.data()));
-      syncPublicSubmissionMessageListeners(snapshot.docs);
-      remote.items.forEach((item) => {
-        const submission = publicSubmissionForItem(item);
-        if (submission) {
-          item.employee_reply = submission.han_reply || "";
-          item.employee_reply_at = submission.replied_at || "";
-          item.employee_conversation = remote.publicSubmissionMessages.get(item.source_submission_id) || [];
-        }
-      });
-      if (state.view !== "calendar" && state.expandedIds.size) render();
       snapshot.docChanges().filter((change) => change.type === "added").forEach(({ doc }) => {
         const submission = doc.data();
         if (submission.imported_at) return;
         // 以公開留言文件 ID 作為固定的事情 ID，避免同步重試時重複建立資料。
         const itemId = `external-${doc.id}`;
         const item = {
-          id: itemId, source_submission_id: doc.id, employee_reply: submission.han_reply || "", employee_reply_at: submission.replied_at || "", employee_conversation: remote.publicSubmissionMessages.get(doc.id) || [], object_name: submission.object_name || "", subject: submission.subject || "",
+          id: itemId, source_submission_id: doc.id, object_name: submission.object_name || "", subject: submission.subject || "",
           contact_name: submission.contact_name || "", phone: submission.phone || "",
           original_message: "員工公開留言", resource_location: submission.resource_location || "",
           my_notes: submission.requested_action ? `需要我做什麼：${submission.requested_action}` : "",
@@ -373,75 +298,6 @@ async function remoteApi(path, options = {}) {
       return next;
     });
     return { item: updated };
-  }
-
-  if (parts[1] === "items" && parts.length === 5 && parts[3] === "messages" && method === "PATCH") {
-    const itemSnapshot = await remoteCollection("items").doc(parts[2]).get();
-    if (!itemSnapshot.exists) throw new Error("找不到這筆事情");
-    const item = remoteDoc(itemSnapshot.data());
-    if (!item.source_submission_id) throw new Error("這筆資料沒有員工留言來源");
-    const submissionRef = firebase.firestore().collection("public_submissions").doc(item.source_submission_id);
-    const messageRef = submissionRef.collection("messages").doc(parts[4]);
-    const updatedText = String(body.text || "").trim().slice(0, 20000);
-    if (!updatedText) throw new Error("訊息不能是空白");
-    await remote.db.runTransaction(async (transaction) => {
-      const submissionSnapshot = await transaction.get(submissionRef);
-      const messageSnapshot = await transaction.get(messageRef);
-      if (!submissionSnapshot.exists || !messageSnapshot.exists) throw new Error("找不到這則訊息");
-      const message = messageSnapshot.data();
-      if (message.sender_role !== "han" || message.sender_uid !== remote.user.uid) {
-        throw new Error("只能修改自己發送的訊息");
-      }
-      transaction.update(messageRef, { text: updatedText, edited_at: now });
-      const submission = submissionSnapshot.data();
-      if (submission.han_reply_message_id === parts[4]
-        || (!submission.han_reply_message_id && String(submission.han_reply || "").trim() === String(message.text || "").trim())) {
-        transaction.update(submissionRef, { han_reply: updatedText, replied_at: now });
-      }
-    });
-    return { itemId: item.id, messageId: parts[4], text: updatedText };
-  }
-
-  if (parts[1] === "items" && parts.length === 4 && parts[3] === "reply" && method === "POST") {
-    const itemSnapshot = await remoteCollection("items").doc(parts[2]).get();
-    if (!itemSnapshot.exists) throw new Error("找不到這筆事情");
-    const item = remoteDoc(itemSnapshot.data());
-    if (!item.source_submission_id) throw new Error("這筆資料沒有員工留言來源");
-    const reply = String(body.reply || "").trim().slice(0, 20000);
-    const submissionRef = firebase.firestore().collection("public_submissions").doc(item.source_submission_id);
-    const submissionSnapshot = await submissionRef.get();
-    if (!submissionSnapshot.exists) throw new Error("找不到員工留言來源");
-    const previousReply = String(submissionSnapshot.data().han_reply || "").trim();
-    const previousReplyAt = submissionSnapshot.data().replied_at || submissionSnapshot.data().created_at || now;
-    const previousHanMessages = previousReply
-      ? await submissionRef.collection("messages").where("sender_role", "==", "han").get()
-      : { docs: [] };
-    const batch = remote.db.batch();
-    if (previousReply && !previousHanMessages.docs.some((doc) => String(doc.data().text || "").trim() === previousReply)) {
-      batch.set(submissionRef.collection("messages").doc(remoteId()), {
-        sender_role: "han",
-        sender_uid: remote.user.uid,
-        text: previousReply,
-        created_at: previousReplyAt,
-      });
-    }
-    const replyMessageId = reply ? remoteId() : null;
-    batch.update(submissionRef, {
-      han_reply: reply,
-      replied_at: reply ? now : null,
-      han_reply_message_id: replyMessageId,
-    });
-    if (reply) {
-      const messageRef = submissionRef.collection("messages").doc(replyMessageId);
-      batch.set(messageRef, {
-        sender_role: "han",
-        sender_uid: remote.user.uid,
-        text: reply,
-        created_at: now,
-      });
-    }
-    await batch.commit();
-    return { itemId: item.id, reply, replied_at: reply ? now : null };
   }
 
   if (parts[1] === "items" && parts.length === 4 && method === "POST") {
@@ -555,10 +411,7 @@ function initializeFirebase() {
     elements.authButton.textContent = user ? `登出 ${user.email || "Google 帳號"}` : "使用 Google 帳號登入";
     if (!user) {
       for (const unsubscribe of remote.unsubscribers) unsubscribe();
-      for (const unsubscribe of remote.publicSubmissionMessageUnsubscribers.values()) unsubscribe();
       remote.unsubscribers = [];
-      remote.publicSubmissionMessageUnsubscribers.clear();
-      remote.publicSubmissionMessages.clear();
       remote.items = [];
       remote.blocks = [];
       remote.documents = [];
@@ -691,7 +544,6 @@ function render() {
 }
 
 function renderList() {
-  rememberMainChatScroll();
   elements.listHeading.textContent = state.view === "inbox" ? "暫存區" : state.view === "todo" ? "待辦" : "封存區";
   elements.itemList.replaceChildren();
   const items = activeItems();
@@ -718,7 +570,6 @@ function renderList() {
     actions.append(count, button);
     elements.listSection.append(actions);
   }
-  restoreMainChatScroll();
 }
 
 function createItemRow(item) {
@@ -749,10 +600,7 @@ function createItemRow(item) {
   title.addEventListener("click", () => {
     const collapsing = state.expandedIds.has(item.id);
     if (collapsing) state.expandedIds.delete(item.id);
-    else {
-      state.expandedIds.add(item.id);
-      chatScrollToBottom.add(item.id);
-    }
+    else state.expandedIds.add(item.id);
     if (collapsing && state.editingId === item.id) state.editingId = null;
     render();
   });
@@ -894,9 +742,6 @@ function createDetails(item) {
 
   const notes = createNotesEditor(item);
   details.append(notes.wrapper);
-  if (item.source_type === "external" && item.source_submission_id) {
-    details.append(createEmployeeReplyEditor(item));
-  }
   const actions = document.createElement("div");
   actions.className = "item-actions";
   if (item.in_archive) {
@@ -926,150 +771,6 @@ function createDetails(item) {
   );
   details.append(actions);
   return details;
-}
-
-function createEmployeeConversation(item) {
-  const section = document.createElement("section");
-  section.className = "employee-conversation";
-  const heading = document.createElement("h3");
-  heading.textContent = "對話紀錄";
-  section.append(heading);
-  const messages = Array.isArray(item.employee_conversation) ? [...item.employee_conversation] : [];
-  if (item.employee_reply && !messages.some((message) => message.sender_role === "han")) {
-    messages.push({ sender_role: "han", text: item.employee_reply, created_at: item.employee_reply_at });
-  }
-  if (!messages.length) {
-    const empty = document.createElement("p");
-    empty.className = "employee-conversation-empty";
-    empty.textContent = "尚未有對話";
-    section.append(empty);
-    return section;
-  }
-  messages.sort((a, b) => String(a.created_at || "").localeCompare(String(b.created_at || "")));
-  const log = document.createElement("div");
-  log.className = "employee-chat-log";
-  messages.forEach((message) => {
-    const line = document.createElement("p");
-    line.className = `employee-chat-message ${message.sender_role === "employee" ? "is-employee" : "is-han"}`;
-    const bubble = document.createElement("span");
-    bubble.className = "employee-chat-bubble";
-    const sender = document.createElement("strong");
-    sender.className = "employee-chat-sender";
-    sender.textContent = `${message.sender_role === "employee" ? "員工" : "HAN"}:`;
-    const text = document.createElement("span");
-    text.className = "employee-chat-text";
-    text.textContent = String(message.text || "");
-    bubble.append(sender, text);
-    if (message.sender_role === "han" && message.id) {
-      const edit = document.createElement("button");
-      edit.type = "button";
-      edit.className = "employee-chat-edit";
-      edit.textContent = "編輯";
-      edit.addEventListener("click", () => startMainChatMessageEdit(line, bubble, item, message));
-      bubble.append(edit);
-    }
-    if (message.edited_at) {
-      const edited = document.createElement("small");
-      edited.className = "employee-chat-edited";
-      edited.textContent = "已修改";
-      bubble.append(edited);
-    }
-    line.append(bubble);
-    log.append(line);
-  });
-  section.append(log);
-  return section;
-}
-
-function startMainChatMessageEdit(line, bubble, item, message) {
-  const editor = document.createElement("div");
-  editor.className = "employee-chat-inline-editor";
-  const textarea = document.createElement("textarea");
-  textarea.rows = 1;
-  textarea.maxLength = 20000;
-  textarea.value = String(message.text || "");
-  textarea.addEventListener("input", () => autoGrowTextarea(textarea));
-  const actions = document.createElement("div");
-  actions.className = "employee-chat-edit-actions";
-  const cancel = document.createElement("button");
-  cancel.type = "button";
-  cancel.className = "text-button";
-  cancel.textContent = "取消";
-  cancel.addEventListener("click", () => render());
-  const save = document.createElement("button");
-  save.type = "button";
-  save.className = "action-button";
-  save.textContent = "儲存";
-  save.addEventListener("click", async () => {
-    const text = textarea.value.trim();
-    if (!text) return;
-    save.disabled = true;
-    try {
-      await api(`/api/items/${item.id}/messages/${message.id}`, {
-        method: "PATCH",
-        body: JSON.stringify({ text }),
-      });
-      message.text = text;
-      message.edited_at = new Date().toISOString();
-      showNotice("訊息已修改");
-      render();
-    } catch (error) {
-      save.disabled = false;
-      showNotice(`修改訊息失敗：${error.message}`, true);
-    }
-  });
-  actions.append(cancel, save);
-  editor.append(textarea, actions);
-  line.replaceChildren(editor);
-  autoGrowTextarea(textarea);
-  textarea.focus();
-}
-
-function createEmployeeReplyEditor(item) {
-  const wrapper = document.createElement("section");
-  wrapper.className = "employee-reply-editor";
-  wrapper.append(createEmployeeConversation(item));
-  const label = document.createElement("label");
-  label.className = "notes-label";
-  const textarea = document.createElement("textarea");
-  textarea.className = "employee-reply-textarea";
-  textarea.setAttribute("aria-label", "輸入回覆");
-  textarea.rows = 1;
-  textarea.maxLength = 20000;
-  textarea.value = "";
-  autoGrowTextarea(textarea);
-  textarea.addEventListener("input", () => autoGrowTextarea(textarea));
-  const button = document.createElement("button");
-  button.type = "button";
-  button.className = "action-button reply-button";
-  button.textContent = "送出回覆";
-  button.addEventListener("click", async () => {
-    chatScrollToBottom.add(item.id);
-    button.disabled = true;
-    try {
-      const data = await api(`/api/items/${item.id}/reply`, {
-        method: "POST",
-        body: JSON.stringify({ reply: textarea.value }),
-      });
-      item.employee_reply = data.reply;
-      textarea.value = "";
-      autoGrowTextarea(textarea);
-      showNotice("已送出回覆");
-      requestAnimationFrame(() => {
-        const log = elements.itemList.querySelector(`.item-row[data-item-id="${CSS.escape(item.id)}"] .employee-chat-log`);
-        if (log) log.scrollTop = log.scrollHeight;
-      });
-    } catch (error) {
-      chatScrollToBottom.delete(item.id);
-      showNotice(`回覆員工失敗：${error.message}`, true);
-    } finally { button.disabled = false; }
-  });
-  const composer = document.createElement("div");
-  composer.className = "reply-composer";
-  composer.append(textarea, button);
-  label.append(composer);
-  wrapper.append(label);
-  return wrapper;
 }
 
 function createNotesEditor(item) {
