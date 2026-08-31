@@ -15,6 +15,7 @@ const state = {
   view: "inbox",
   inboxItems: [],
   todoItems: [],
+  archiveItems: [],
   expandedIds: new Set(),
   editingId: null,
   itemEditDrafts: new Map(),
@@ -39,6 +40,7 @@ const elements = {
   authButton: document.querySelector("#authButton"),
   inboxCount: document.querySelector("#inboxCount"),
   todoCount: document.querySelector("#todoCount"),
+  archiveCount: document.querySelector("#archiveCount"),
   manualEntry: document.querySelector("#manualEntry"),
   manualToggle: document.querySelector("#manualToggle"),
   manualForm: document.querySelector("#manualForm"),
@@ -102,9 +104,9 @@ function remoteDoc(data) {
 }
 
 function remoteItemList(view) {
-  const flag = view === "todo" ? "in_todo" : "in_inbox";
+  const flag = view === "todo" ? "in_todo" : view === "archive" ? "in_archive" : "in_inbox";
   return remote.items
-    .filter((item) => Boolean(item[flag]))
+    .filter((item) => Boolean(item[flag]) && (view === "archive" || !item.in_archive))
     .sort((a, b) => String(b.created_at).localeCompare(String(a.created_at)));
 }
 
@@ -124,9 +126,11 @@ function remoteRefreshCalendar() {
         subject: item?.subject || block.subject || "",
         in_inbox: Boolean(item?.in_inbox ?? block.in_inbox),
         in_todo: Boolean(item?.in_todo ?? block.in_todo),
+        in_archive: Boolean(item?.in_archive ?? block.in_archive),
         title: item ? `${item.object_name}｜${item.subject}` : (block.title || ""),
       };
-    });
+    })
+    .filter((block) => !block.in_archive);
   const arranged = new Set(remote.blocks.map((block) => block.item_id));
   state.calendar.availableItems = remote.items
     .filter((item) => (item.in_inbox || item.in_todo) && !arranged.has(item.id))
@@ -149,6 +153,7 @@ function attachRemoteListeners() {
     remote.items = snapshot.docs.map((doc) => remoteDoc(doc.data()));
     state.inboxItems = remoteItemList("inbox");
     state.todoItems = remoteItemList("todo");
+    state.archiveItems = remoteItemList("archive");
     remoteRefreshCalendar();
     render();
     setConnection(true, "已同步");
@@ -240,16 +245,18 @@ async function remoteApi(path, options = {}) {
     if (!snapshot.exists) throw new Error("找不到這筆事情");
     const item = remoteDoc(snapshot.data());
     if (parts[3] === "todo") {
-      await itemRef.update({ in_inbox: false, in_todo: true, updated_at: now });
-      return { item: { ...item, in_inbox: false, in_todo: true, updated_at: now } };
+      await itemRef.update({ in_inbox: false, in_todo: true, in_archive: false, updated_at: now });
+      return { item: { ...item, in_inbox: false, in_todo: true, in_archive: false, updated_at: now } };
+    }
+    if (parts[3] === "restore") {
+      await itemRef.update({ in_inbox: true, in_todo: false, in_archive: false, updated_at: now });
+      return { item: { ...item, in_inbox: true, in_todo: false, in_archive: false, updated_at: now } };
     }
     if (parts[3] === "complete") {
       const completion = { id: remoteId(), title: `${item.object_name}｜${item.subject}`, completed_at: now };
-      const blockSnapshot = await remoteCollection("calendar_blocks").where("item_id", "==", item.id).get();
       const batch = remote.db.batch();
       batch.set(remoteCollection("completions").doc(completion.id), completion);
-      batch.delete(itemRef);
-      blockSnapshot.forEach((doc) => batch.delete(doc.ref));
+      batch.update(itemRef, { in_inbox: false, in_todo: false, in_archive: true, updated_at: now });
       await batch.commit();
       return { completion };
     }
@@ -349,6 +356,7 @@ function initializeFirebase() {
       remote.documents = [];
       state.inboxItems = [];
       state.todoItems = [];
+      state.archiveItems = [];
       setConnection(false, "請先登入");
       render();
       return;
@@ -397,21 +405,25 @@ async function api(path, options = {}) {
 }
 
 function activeItems() {
-  return state.view === "inbox" ? state.inboxItems : state.todoItems;
+  if (state.view === "todo") return state.todoItems;
+  if (state.view === "archive") return state.archiveItems;
+  return state.inboxItems;
 }
 
 function itemById(itemId) {
-  return [...state.inboxItems, ...state.todoItems].find((item) => item.id === itemId);
+  return [...state.inboxItems, ...state.todoItems, ...state.archiveItems].find((item) => item.id === itemId);
 }
 
 async function loadItems({ keepExpanded = true } = {}) {
   try {
-    const [inbox, todo] = await Promise.all([
+    const [inbox, todo, archive] = await Promise.all([
       api("/api/items?view=inbox"),
       api("/api/items?view=todo"),
+      api("/api/items?view=archive"),
     ]);
     state.inboxItems = inbox.items;
     state.todoItems = todo.items;
+    state.archiveItems = archive.items;
     if (!keepExpanded) state.expandedIds.clear();
     else state.expandedIds = new Set([...state.expandedIds].filter((id) => itemById(id)));
     setConnection(true, "已連線");
@@ -451,6 +463,7 @@ async function loadResources() {
 function render() {
   elements.inboxCount.textContent = String(state.inboxItems.length);
   elements.todoCount.textContent = String(state.todoItems.length);
+  elements.archiveCount.textContent = String(state.archiveItems.length);
   for (const tab of elements.tabs) {
     const active = tab.dataset.view === state.view;
     tab.classList.toggle("is-active", active);
@@ -458,7 +471,7 @@ function render() {
     else tab.removeAttribute("aria-current");
   }
 
-  const isListView = state.view === "inbox" || state.view === "todo";
+  const isListView = state.view === "inbox" || state.view === "todo" || state.view === "archive";
   elements.manualEntry.hidden = state.view !== "inbox";
   elements.listSection.hidden = !isListView;
   elements.calendarPanel.hidden = state.view !== "calendar";
@@ -469,7 +482,7 @@ function render() {
 }
 
 function renderList() {
-  elements.listHeading.textContent = state.view === "inbox" ? "暫存區" : "待辦";
+  elements.listHeading.textContent = state.view === "inbox" ? "暫存區" : state.view === "todo" ? "待辦" : "封存區";
   elements.itemList.replaceChildren();
   const items = activeItems();
   elements.emptyState.hidden = items.length !== 0;
@@ -515,6 +528,7 @@ function replaceItem(updated) {
   const replace = (items) => items.map((item) => item.id === updated.id ? { ...item, ...updated } : item);
   state.inboxItems = replace(state.inboxItems);
   state.todoItems = replace(state.todoItems);
+  state.archiveItems = replace(state.archiveItems);
   if (remote.enabled) {
     remote.items = replace(remote.items);
     remoteRefreshCalendar();
@@ -627,20 +641,17 @@ function createDetails(item) {
       list.append(wrapper);
     }
     details.append(list);
-    const editActions = document.createElement("div");
-    editActions.className = "detail-edit-actions";
-    editActions.append(actionButton("編輯", false, () => {
-      state.editingId = item.id;
-      render();
-    }));
-    details.append(editActions);
   }
 
   const notes = createNotesEditor(item);
   details.append(notes.wrapper);
   const actions = document.createElement("div");
   actions.className = "item-actions";
-  actions.append(
+  if (item.in_archive) {
+    actions.append(actionButton("復原", false, async () => {
+      await runItemAction(item.id, "restore", "已復原到暫存區");
+    }));
+  } else actions.append(
     actionButton(item.in_todo ? "已在待辦" : "待辦", item.in_todo, async () => {
       if (!(await syncNote(item.id, notes.textarea, notes.status))) return;
       await runItemAction(item.id, "todo", "已移到待辦");
