@@ -3,9 +3,16 @@
   const status = document.querySelector("#submitStatus");
   const config = window.HAN_FIREBASE_CONFIG;
   if (!form || !config || !globalThis.firebase) return;
-  const app = firebase.initializeApp(config);
+  const app = firebase.apps.length ? firebase.apps[0] : firebase.initializeApp(config);
   const auth = firebase.auth();
   const db = firebase.firestore();
+  const toggle = document.querySelector("#publicEntryToggle");
+  const wrap = document.querySelector("#publicEntryFormWrap");
+  toggle?.addEventListener("click", () => {
+    const open = wrap.hidden;
+    wrap.hidden = !open;
+    toggle.setAttribute("aria-expanded", String(open));
+  });
   form.addEventListener("submit", async (event) => {
     event.preventDefault();
     const button = form.querySelector("button[type=submit]");

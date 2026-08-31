@@ -150,6 +150,12 @@ main {
   border-bottom: 1px solid var(--line);
 }
 
+.public-entry {
+  border-bottom: 1px solid var(--line);
+  background: #f7faf8;
+}
+.public-entry-hint { margin: 0 14px 10px; color: var(--muted); font-size: .9rem; }
+
 .manual-toggle {
   width: 100%;
   min-height: 44px;
