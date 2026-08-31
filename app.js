@@ -15,7 +15,7 @@ const state = {
   view: "inbox",
   inboxItems: [],
   todoItems: [],
-  expandedId: null,
+  expandedIds: new Set(),
   editingId: null,
   itemEditDrafts: new Map(),
   calendar: {
@@ -412,9 +412,8 @@ async function loadItems({ keepExpanded = true } = {}) {
     ]);
     state.inboxItems = inbox.items;
     state.todoItems = todo.items;
-    if (!keepExpanded || !itemById(state.expandedId)) {
-      state.expandedId = null;
-    }
+    if (!keepExpanded) state.expandedIds.clear();
+    else state.expandedIds = new Set([...state.expandedIds].filter((id) => itemById(id)));
     setConnection(true, "已連線");
     render();
   } catch (error) {
@@ -485,15 +484,16 @@ function createItemRow(item) {
   title.type = "button";
   title.className = "item-title";
   title.textContent = `${item.object_name}｜${item.subject}`;
-  title.setAttribute("aria-expanded", String(state.expandedId === item.id));
+  title.setAttribute("aria-expanded", String(state.expandedIds.has(item.id)));
   title.addEventListener("click", () => {
-    const collapsing = state.expandedId === item.id;
-    state.expandedId = collapsing ? null : item.id;
+    const collapsing = state.expandedIds.has(item.id);
+    if (collapsing) state.expandedIds.delete(item.id);
+    else state.expandedIds.add(item.id);
     if (collapsing && state.editingId === item.id) state.editingId = null;
     render();
   });
   row.append(title);
-  if (state.expandedId === item.id) row.append(createDetails(item));
+  if (state.expandedIds.has(item.id)) row.append(createDetails(item));
   return row;
 }
 
@@ -515,21 +515,19 @@ function createItemEditForm(item) {
     subject: item.subject || "",
     contact_name: item.contact_name || "",
     phone: item.phone || "",
-    original_message: item.original_message || "",
     resource_location: item.resource_location || "",
   };
   const values = { ...original, ...(state.itemEditDrafts.get(item.id) || {}) };
   const fields = [
     ["對象", "object_name", "input"],
-    ["事情", "subject", "input"],
     ["聯絡人", "contact_name", "input"],
     ["電話", "phone", "input"],
-    ["原始訊息", "original_message", "textarea"],
+    ["事情", "subject", "input"],
     ["資料位置", "resource_location", "input"],
   ];
   const controls = {};
   for (const [label, key, type] of fields) {
-    const field = formField(label, type, values[key], key === "original_message" ? 4000 : 240);
+    const field = formField(label, type, values[key], 240);
     controls[key] = field.control;
     field.control.addEventListener("input", () => {
       state.itemEditDrafts.set(item.id, Object.fromEntries(
@@ -586,17 +584,27 @@ function createDetails(item) {
   } else {
     const list = document.createElement("dl");
     list.className = "detail-list";
-    const pairs = [
+    const topRow = document.createElement("div");
+    topRow.className = "detail-top-row";
+    const topPairs = [
       ["對象", item.object_name],
-      ["事情", item.subject],
       ["聯絡人", item.contact_name],
       ["電話", item.phone],
-      ["原始訊息", item.original_message],
-      ["資料位置", item.resource_location],
     ];
-    for (const [label, value] of pairs) {
+    for (const [label, value] of topPairs) {
       const wrapper = document.createElement("div");
       wrapper.className = "detail-pair";
+      const term = document.createElement("dt");
+      term.textContent = label;
+      const description = document.createElement("dd");
+      description.textContent = value || "—";
+      wrapper.append(term, description);
+      topRow.append(wrapper);
+    }
+    list.append(topRow);
+    for (const [label, value] of [["事情", item.subject], ["資料位置", item.resource_location]]) {
+      const wrapper = document.createElement("div");
+      wrapper.className = "detail-pair detail-full-row";
       const term = document.createElement("dt");
       term.textContent = label;
       const description = document.createElement("dd");
@@ -724,7 +732,7 @@ function createOfficialEditor(item, notesTextarea) {
       });
       showNotice("已建立正式文件並存入資源庫");
       state.view = "resources";
-      state.expandedId = null;
+      state.expandedIds.clear();
       await loadResources();
     } catch (error) {
       showNotice(`建立正式文件失敗：${error.message}`, true);
@@ -827,7 +835,7 @@ async function performNoteSave(itemId, textarea, status) {
 async function runItemAction(itemId, action, successMessage) {
   try {
     await api(`/api/items/${itemId}/${action}`, { method: "POST", body: "{}" });
-    state.expandedId = null;
+    state.expandedIds.clear();
     showNotice(successMessage);
     await loadItems({ keepExpanded: false });
   } catch (error) {
@@ -903,12 +911,11 @@ function setManualForm(open) {
   elements.manualForm.hidden = !open;
   elements.manualToggle.setAttribute("aria-expanded", String(open));
   elements.manualToggle.textContent = open ? "－ 收合手動輸入" : "＋ 手動輸入";
-  if (open) elements.manualForm.elements.object_name.focus();
 }
 
 function openCalendarFor(itemId) {
   state.view = "calendar";
-  state.expandedId = null;
+  state.expandedIds.clear();
   state.calendar.selectedItemId = itemId;
   state.calendar.selectedBlockId = null;
   showNotice("已選取這筆事情，請在日期上按住拖曳");
@@ -945,7 +952,6 @@ async function createQuickCalendarIdea(event) {
   const text = String(formData.get("title") || "").trim();
   if (!text) {
     showNotice("請輸入想法內容", true);
-    elements.calendarQuickForm.elements.title.focus();
     return;
   }
   const fields = quickCalendarFields(text);
@@ -957,7 +963,7 @@ async function createQuickCalendarIdea(event) {
     rememberCreatedItem(data.item);
     elements.calendarQuickForm.reset();
     state.view = "calendar";
-    state.expandedId = null;
+    state.expandedIds.clear();
     state.calendar.selectedItemId = data.item.id;
     state.calendar.selectedBlockId = null;
     showNotice("已新增行事曆想法，請在日期上按住拖曳");
@@ -1429,7 +1435,7 @@ elements.resourceSearch.addEventListener("input", () => {
 for (const tab of elements.tabs) {
   tab.addEventListener("click", () => {
     state.view = tab.dataset.view;
-    state.expandedId = null;
+    state.expandedIds.clear();
     state.editingId = null;
     showNotice("");
     if (state.view === "calendar") void loadCalendar();
@@ -1439,10 +1445,12 @@ for (const tab of elements.tabs) {
 }
 
 document.addEventListener("visibilitychange", () => {
-  if (document.visibilityState !== "hidden" || !state.expandedId) return;
-  const textarea = document.querySelector(`#notes-${CSS.escape(state.expandedId)}`);
-  const status = textarea?.parentElement?.querySelector(".note-status");
-  if (textarea && readDraft(state.expandedId)) void syncNote(state.expandedId, textarea, status);
+  if (document.visibilityState !== "hidden") return;
+  for (const itemId of state.expandedIds) {
+    const textarea = document.querySelector(`#notes-${CSS.escape(itemId)}`);
+    const status = textarea?.parentElement?.querySelector(".note-status");
+    if (textarea && readDraft(itemId)) void syncNote(itemId, textarea, status);
+  }
 });
 
 window.addEventListener("online", () => {

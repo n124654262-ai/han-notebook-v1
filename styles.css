@@ -318,6 +318,17 @@ button:focus-visible {
   margin-top: 10px;
 }
 
+.item-edit-form {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 0 8px;
+}
+
+.item-edit-form label:nth-child(n + 4),
+.item-edit-form .form-actions {
+  grid-column: 1 / -1;
+}
+
 .item-edit-form label > span {
   display: block;
   margin-bottom: 5px;
@@ -338,8 +349,37 @@ button:focus-visible {
   display: grid;
   grid-template-columns: 88px minmax(0, 1fr);
   gap: 8px;
-  padding: 8px 0;
+  padding: 5px 0;
   border-bottom: 1px solid #dde5e1;
+}
+
+.detail-top-row {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  border-bottom: 1px solid #dde5e1;
+}
+
+.detail-top-row .detail-pair {
+  display: block;
+  min-width: 0;
+  padding: 5px 4px;
+  border-bottom: 0;
+}
+
+.detail-top-row .detail-pair dt {
+  font-size: 12px;
+}
+
+.detail-top-row .detail-pair dd {
+  margin-top: 2px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.detail-full-row {
+  padding-top: 5px;
+  padding-bottom: 5px;
 }
 
 .detail-pair dt {
@@ -793,11 +833,6 @@ button:focus-visible {
     max-width: 180px;
     min-height: 32px;
     font-size: 12px;
-  }
-
-  .two-columns {
-    grid-template-columns: 1fr;
-    gap: 0;
   }
 
   .detail-pair {
