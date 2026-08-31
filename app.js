@@ -353,18 +353,22 @@ async function remoteApi(path, options = {}) {
     const item = remoteDoc(itemSnapshot.data());
     if (!item.source_submission_id) throw new Error("這筆資料沒有員工留言來源");
     const reply = String(body.reply || "").trim().slice(0, 20000);
-    await firebase.firestore().collection("public_submissions").doc(item.source_submission_id).update({
+    const submissionRef = firebase.firestore().collection("public_submissions").doc(item.source_submission_id);
+    const batch = remote.db.batch();
+    batch.update(submissionRef, {
       han_reply: reply,
       replied_at: reply ? now : null,
     });
     if (reply) {
-      await firebase.firestore().collection("public_submissions").doc(item.source_submission_id).collection("messages").add({
+      const messageRef = submissionRef.collection("messages").doc(remoteId());
+      batch.set(messageRef, {
         sender_role: "han",
         sender_uid: remote.user.uid,
         text: reply,
         created_at: now,
       });
     }
+    await batch.commit();
     return { itemId: item.id, reply, replied_at: reply ? now : null };
   }
 
@@ -870,13 +874,13 @@ function createEmployeeConversation(item) {
   messages.forEach((message) => {
     const line = document.createElement("p");
     line.className = `employee-chat-message ${message.sender_role === "employee" ? "is-employee" : "is-han"}`;
-    const sender = document.createElement("strong");
-    sender.className = "employee-chat-sender";
-    sender.textContent = message.sender_role === "employee" ? "員工" : "HAN";
     const bubble = document.createElement("span");
     bubble.className = "employee-chat-bubble";
-    bubble.textContent = String(message.text || "");
-    line.append(sender, bubble);
+    const sender = document.createElement("strong");
+    sender.className = "employee-chat-sender";
+    sender.textContent = `${message.sender_role === "employee" ? "員工" : "HAN"}:`;
+    bubble.append(sender, document.createTextNode(String(message.text || "")));
+    line.append(bubble);
     log.append(line);
   });
   section.append(log);
@@ -892,7 +896,7 @@ function createEmployeeReplyEditor(item) {
   label.textContent = "給員工的回覆";
   const textarea = document.createElement("textarea");
   textarea.className = "employee-reply-textarea";
-  textarea.rows = 3;
+  textarea.rows = 1;
   textarea.maxLength = 20000;
   textarea.value = item.employee_reply || "";
   autoGrowTextarea(textarea);
