@@ -383,6 +383,11 @@ button:focus-visible {
   cursor: not-allowed;
 }
 
+.danger-button.is-confirming {
+  border-color: #7c2525;
+  background: #7c2525;
+}
+
 .detail-edit-actions {
   display: flex;
   justify-content: flex-end;

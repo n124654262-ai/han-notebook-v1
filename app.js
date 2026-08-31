@@ -18,6 +18,7 @@ const state = {
   archiveItems: [],
   expandedIds: new Set(),
   archiveSelectedIds: new Set(),
+  archiveDeleteConfirmation: null,
   editingId: null,
   itemEditDrafts: new Map(),
   calendar: {
@@ -254,13 +255,11 @@ async function remoteApi(path, options = {}) {
     if (!requestedIds.length) return { deleted_ids: [] };
     const refs = requestedIds.map((id) => remoteCollection("items").doc(id));
     const snapshots = await Promise.all(refs.map((ref) => ref.get()));
-    const deletedIds = snapshots
+    const archivedSnapshots = snapshots
       .filter((snapshot) => snapshot.exists && Boolean(snapshot.data().in_archive))
-      .map((snapshot) => snapshot.id);
-    const batch = remote.db.batch();
-    deletedIds.forEach((id) => batch.delete(remoteCollection("items").doc(id)));
-    if (deletedIds.length) await batch.commit();
-    return { deleted_ids: deletedIds };
+    if (!archivedSnapshots.length) return { deleted_ids: [] };
+    await Promise.all(archivedSnapshots.map((snapshot) => snapshot.ref.delete()));
+    return { deleted_ids: archivedSnapshots.map((snapshot) => snapshot.id) };
   }
 
   if (parts[1] === "items" && parts.length === 3 && method === "PATCH") {
@@ -564,7 +563,12 @@ function renderList() {
     const button = document.createElement("button");
     button.type = "button";
     button.className = "danger-button";
-    button.textContent = "批次刪除";
+    const confirming = state.archiveDeleteConfirmation
+      && state.archiveDeleteConfirmation.ids.join("\u0000") === [...state.archiveSelectedIds].join("\u0000")
+      && state.archiveDeleteConfirmation.expiresAt > Date.now();
+    button.textContent = confirming ? "確認刪除" : "批次刪除";
+    button.setAttribute("aria-label", confirming ? "確認刪除選取的封存資料" : "批次刪除");
+    button.classList.toggle("is-confirming", Boolean(confirming));
     button.disabled = state.archiveSelectedIds.size === 0;
     button.addEventListener("click", () => void deleteSelectedArchiveItems());
     actions.append(count, button);
@@ -588,6 +592,7 @@ function createItemRow(item) {
     checkbox.addEventListener("change", () => {
       if (checkbox.checked) state.archiveSelectedIds.add(item.id);
       else state.archiveSelectedIds.delete(item.id);
+      state.archiveDeleteConfirmation = null;
       renderList();
     });
     titleRow.append(checkbox);
@@ -976,15 +981,32 @@ async function runItemAction(itemId, action, successMessage) {
 async function deleteSelectedArchiveItems() {
   const itemIds = [...state.archiveSelectedIds];
   if (!itemIds.length) return;
-  if (!window.confirm(`確定刪除選取的 ${itemIds.length} 筆封存資料？刪除後無法復原。`)) return;
+  const now = Date.now();
+  const pending = state.archiveDeleteConfirmation;
+  const sameSelection = pending && pending.ids.join("\u0000") === itemIds.join("\u0000");
+  if (!sameSelection || pending.expiresAt <= now) {
+    state.archiveDeleteConfirmation = { ids: itemIds, expiresAt: now + 8000 };
+    showNotice(`請在 8 秒內再按一次「確認刪除」，共 ${itemIds.length} 筆；刪除後無法復原。`);
+    renderList();
+    return;
+  }
+  state.archiveDeleteConfirmation = null;
   try {
     const data = await api("/api/items/batch-delete", {
       method: "POST",
       body: JSON.stringify({ item_ids: itemIds }),
     });
+    const deletedIds = Array.isArray(data?.deleted_ids) ? data.deleted_ids.map(String) : [];
+    if (!deletedIds.length) throw new Error("選取的資料已不存在，或不是封存資料");
     state.archiveSelectedIds.clear();
     state.expandedIds.clear();
-    showNotice(`已刪除 ${data.deleted_ids.length} 筆封存資料`);
+    const deleted = new Set(deletedIds);
+    remote.items = remote.items.filter((item) => !deleted.has(String(item.id)));
+    state.inboxItems = state.inboxItems.filter((item) => !deleted.has(String(item.id)));
+    state.todoItems = state.todoItems.filter((item) => !deleted.has(String(item.id)));
+    state.archiveItems = state.archiveItems.filter((item) => !deleted.has(String(item.id)));
+    showNotice(`已刪除 ${deletedIds.length} 筆封存資料`);
+    render();
     await loadItems({ keepExpanded: false });
   } catch (error) {
     showNotice(`批次刪除失敗：${error.message}`, true);
