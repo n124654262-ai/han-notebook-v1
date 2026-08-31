@@ -1302,6 +1302,13 @@ function renderCalendarBlocks(row, weekStart, skipBlockId = "") {
   }
 }
 
+function calendarColorIndex(block) {
+  const source = String(block.id || block.item_id || block.title || "");
+  let hash = 0;
+  for (const character of source) hash = ((hash << 5) - hash + character.charCodeAt(0)) | 0;
+  return Math.abs(hash) % 8;
+}
+
 function appendCalendarBar(row, block, weekStart, preview) {
   const visibleStart = maxDate(block.start_date, isoDate(weekStart));
   const visibleEnd = minDate(block.end_date, isoDate(addDays(weekStart, 6)));
@@ -1309,7 +1316,7 @@ function appendCalendarBar(row, block, weekStart, preview) {
   const dayCount = dateDiff(visibleStart, visibleEnd) + 1;
   const bar = document.createElement("button");
   bar.type = "button";
-  bar.className = `calendar-block${preview ? " is-preview" : ""}`;
+  bar.className = `calendar-block calendar-color-${calendarColorIndex(block)}${preview ? " is-preview" : ""}`;
   bar.dataset.blockId = block.id;
   bar.style.left = `${(startOffset / 7) * 100}%`;
   bar.style.width = `${(dayCount / 7) * 100}%`;

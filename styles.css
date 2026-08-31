@@ -789,13 +789,13 @@ button:focus-visible {
   position: absolute;
   z-index: 2;
   display: block;
-  height: 6px;
+  height: 8px;
   overflow: visible;
   padding: 0 14px;
   border: 0;
-  border-radius: 3px;
+  border-radius: 0;
   color: #17211d;
-  background: #8fc5ab;
+  background: linear-gradient(var(--calendar-bar-color, #8fc5ab), var(--calendar-bar-color, #8fc5ab)) center / 100% 4px no-repeat;
   font-size: 11px;
   font-weight: 600;
   line-height: 1;
@@ -817,6 +817,15 @@ button:focus-visible {
   transform: translateY(-50%);
   pointer-events: none;
 }
+
+.calendar-block.calendar-color-0 { --calendar-bar-color: #9dc9ff; }
+.calendar-block.calendar-color-1 { --calendar-bar-color: #ffc37d; }
+.calendar-block.calendar-color-2 { --calendar-bar-color: #b9df9b; }
+.calendar-block.calendar-color-3 { --calendar-bar-color: #d5b5f7; }
+.calendar-block.calendar-color-4 { --calendar-bar-color: #f5a9b8; }
+.calendar-block.calendar-color-5 { --calendar-bar-color: #9de4df; }
+.calendar-block.calendar-color-6 { --calendar-bar-color: #f0d18a; }
+.calendar-block.calendar-color-7 { --calendar-bar-color: #b6b8f2; }
 
 .calendar-block::before,
 .calendar-block::after {
@@ -851,7 +860,7 @@ button:focus-visible {
 .calendar-block.is-preview {
   border: 0;
   color: #17211d;
-  background: #b8ddca;
+  background: linear-gradient(var(--calendar-bar-color, #b8ddca), var(--calendar-bar-color, #b8ddca)) center / 100% 4px no-repeat;
   opacity: 0.78;
   pointer-events: none;
 }
