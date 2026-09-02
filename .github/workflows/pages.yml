@@ -30,7 +30,7 @@ jobs:
         run: |
           rm -rf _site
           mkdir -p _site/employee
-          cp index.html app.js styles.css firebase-config.js submit.js 404.html _site/
+          cp index.html app.js gmail-reader.js styles.css firebase-config.js submit.js 404.html _site/
           cp employee/index.html _site/employee/index.html
       - name: 打包靜態網站
         uses: actions/upload-pages-artifact@v3
