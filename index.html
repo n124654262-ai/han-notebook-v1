@@ -6,22 +6,24 @@
     <meta name="theme-color" content="#176b52">
     <meta name="google-oauth-client-id" content="489249157768-6es2s0cf09e7144lrjp295eic7bva3gj.apps.googleusercontent.com">
     <title>HAN 筆記本</title>
-<link rel="stylesheet" href="styles.css?v=gmail-reader-0902-1">
+    <link rel="stylesheet" href="styles.css?v=gmail-mobile-0902-2">
     <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-app-compat.js"></script>
     <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-auth-compat.js"></script>
     <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore-compat.js"></script>
     <script src="https://accounts.google.com/gsi/client" async defer></script>
     <script src="firebase-config.js"></script>
     <script src="app.js?v=calendar-color-0901-2" defer></script>
-    <script src="gmail-reader.js?v=readonly-0902-1" defer></script>
+    <script src="gmail-reader.js?v=readonly-mobile-0902-2" defer></script>
   </head>
   <body>
     <div class="app-topbar">
       <header class="app-header">
-        <h1>HAN 筆記本</h1>
+        <div class="header-brand">
+          <h1>HAN 筆記本</h1>
+          <button id="gmailOpenButton" class="gmail-open-button" type="button">公司 Gmail</button>
+        </div>
         <div class="header-status">
           <span id="syncState" class="sync-state" aria-live="polite">等待登入</span>
-          <button id="gmailOpenButton" class="gmail-open-button" type="button">公司 Gmail</button>
           <button id="authButton" class="auth-button" type="button">使用 Google 帳號登入</button>
         </div>
       </header>

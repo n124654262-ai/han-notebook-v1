@@ -158,13 +158,24 @@
     return "";
   }
 
+  function normalizeReadableText(value) {
+    return String(value || "")
+      .replace(/\r\n?/g, "\n")
+      .replace(/\u00a0/g, " ")
+      .split("\n")
+      .map((line) => line.replace(/[ \t]+/g, " ").trim())
+      .join("\n")
+      .replace(/\n{3,}/g, "\n\n")
+      .trim();
+  }
+
   function findReadableBody(payload) {
-    const plainText = findPart(payload, "text/plain");
-    if (plainText) return plainText.trim();
+    const plainText = normalizeReadableText(findPart(payload, "text/plain"));
+    if (plainText) return plainText;
     const html = findPart(payload, "text/html");
     if (!html) return "（此信件沒有可顯示的文字內容）";
     const documentData = new DOMParser().parseFromString(html, "text/html");
-    return String(documentData.body?.textContent || "").replace(/\n{3,}/g, "\n\n").trim()
+    return normalizeReadableText(documentData.body?.textContent)
       || "（此信件沒有可顯示的文字內容）";
   }
 
