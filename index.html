@@ -4,13 +4,16 @@
     <meta charset="utf-8">
     <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
     <meta name="theme-color" content="#176b52">
+    <meta name="google-oauth-client-id" content="489249157768-6es2s0cf09e7144lrjp295eic7bva3gj.apps.googleusercontent.com">
     <title>HAN 筆記本</title>
-<link rel="stylesheet" href="styles.css?v=desktop-layout-0901-1">
+<link rel="stylesheet" href="styles.css?v=gmail-reader-0902-1">
     <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-app-compat.js"></script>
     <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-auth-compat.js"></script>
     <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore-compat.js"></script>
+    <script src="https://accounts.google.com/gsi/client" async defer></script>
     <script src="firebase-config.js"></script>
     <script src="app.js?v=calendar-color-0901-2" defer></script>
+    <script src="gmail-reader.js?v=readonly-0902-1" defer></script>
   </head>
   <body>
     <div class="app-topbar">
@@ -18,6 +21,7 @@
         <h1>HAN 筆記本</h1>
         <div class="header-status">
           <span id="syncState" class="sync-state" aria-live="polite">等待登入</span>
+          <button id="gmailOpenButton" class="gmail-open-button" type="button">公司 Gmail</button>
           <button id="authButton" class="auth-button" type="button">使用 Google 帳號登入</button>
         </div>
       </header>
@@ -130,5 +134,40 @@
         <p id="emptyState" class="empty-state" hidden>目前沒有資料</p>
       </section>
     </main>
+
+    <dialog id="gmailReaderDialog" class="gmail-reader-dialog" aria-labelledby="gmailReaderTitle">
+      <div class="gmail-reader-shell">
+        <header class="gmail-reader-header">
+          <div>
+            <h2 id="gmailReaderTitle">公司 Gmail</h2>
+            <p id="gmailReaderStatus" aria-live="polite">尚未連接</p>
+          </div>
+          <button id="gmailCloseButton" class="gmail-reader-close" type="button" aria-label="關閉公司 Gmail">×</button>
+        </header>
+
+        <section id="gmailConnectPanel" class="gmail-reader-connect">
+          <p>連接公司帳號後，可以閱讀收件匣。這裡不會刪除、修改或保存信件。</p>
+          <button id="gmailConnectButton" class="primary-button" type="button">連接公司 Gmail</button>
+        </section>
+
+        <section id="gmailListPanel" class="gmail-reader-list-panel" hidden>
+          <div class="gmail-reader-toolbar">
+            <span id="gmailMessageCount">收件匣</span>
+            <button id="gmailRefreshButton" class="secondary-button" type="button">重新整理</button>
+          </div>
+          <ul id="gmailMessageList" class="gmail-reader-list" aria-live="polite"></ul>
+        </section>
+
+        <article id="gmailMessagePanel" class="gmail-reader-message" hidden>
+          <button id="gmailBackButton" class="gmail-reader-back" type="button">← 回信件夾</button>
+          <h2 id="gmailMessageSubject">讀取信件</h2>
+          <dl>
+            <div><dt>寄件者</dt><dd id="gmailMessageFrom">—</dd></div>
+            <div><dt>收件時間</dt><dd id="gmailMessageDate">—</dd></div>
+          </dl>
+          <div id="gmailMessageBody" class="gmail-reader-body">正在讀取信件…</div>
+        </article>
+      </div>
+    </dialog>
   </body>
 </html>
