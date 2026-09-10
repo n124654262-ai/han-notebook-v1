@@ -594,6 +594,8 @@ function createItemRow(item) {
   row.dataset.itemId = item.id;
   const titleRow = document.createElement("div");
   titleRow.className = "item-title-row";
+  const editing = state.editingId === item.id;
+  titleRow.classList.toggle("is-editing", editing);
   if (state.view === "archive") {
     const checkbox = document.createElement("input");
     checkbox.type = "checkbox";
@@ -622,7 +624,7 @@ function createItemRow(item) {
     render();
   });
   titleRow.append(title);
-  if (state.expandedIds.has(item.id) && state.editingId !== item.id) {
+  if (state.expandedIds.has(item.id) && !editing) {
     const edit = document.createElement("button");
     edit.type = "button";
     edit.className = "item-inline-edit";
@@ -632,6 +634,11 @@ function createItemRow(item) {
       render();
     });
     titleRow.append(edit);
+  } else if (editing) {
+    const indicator = document.createElement("span");
+    indicator.className = "item-editing-indicator";
+    indicator.textContent = "編輯中";
+    titleRow.append(indicator);
   }
   row.append(titleRow);
   if (state.expandedIds.has(item.id)) row.append(createDetails(item));
@@ -664,7 +671,7 @@ function createItemEditForm(item) {
     ["標題／事項", "object_name", "input"],
     ["聯絡人", "contact_name", "input"],
     ["電話", "phone", "input"],
-    ["內容", "subject", "input"],
+    ["內容", "subject", "textarea"],
     ["資料位置", "resource_location", "input"],
   ];
   const controls = {};
@@ -721,7 +728,8 @@ function createItemEditForm(item) {
 function createDetails(item) {
   const details = document.createElement("div");
   details.className = "item-details";
-  if (state.editingId === item.id) {
+  const editing = state.editingId === item.id;
+  if (editing) {
     details.append(createItemEditForm(item));
   } else {
     const list = document.createElement("dl");
@@ -759,6 +767,10 @@ function createDetails(item) {
 
   const notes = createNotesEditor(item);
   details.append(notes.wrapper);
+  if (editing) {
+    details.classList.add("is-editing");
+    return details;
+  }
   const actions = document.createElement("div");
   actions.className = "item-actions";
   if (item.in_archive) {

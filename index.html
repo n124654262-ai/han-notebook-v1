@@ -6,13 +6,13 @@
     <meta name="theme-color" content="#176b52">
     <meta name="google-oauth-client-id" content="489249157768-6es2s0cf09e7144lrjp295eic7bva3gj.apps.googleusercontent.com">
     <title>HAN 筆記本</title>
-    <link rel="stylesheet" href="styles.css?v=ui-0911-2">
+    <link rel="stylesheet" href="styles.css?v=ui-0911-3">
     <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-app-compat.js"></script>
     <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-auth-compat.js"></script>
     <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore-compat.js"></script>
     <script src="https://accounts.google.com/gsi/client" async defer></script>
     <script src="firebase-config.js"></script>
-    <script src="app.js?v=ui-0911-2" defer></script>
+    <script src="app.js?v=ui-0911-3" defer></script>
   </head>
   <body>
     <div class="app-topbar">
@@ -62,8 +62,10 @@
               <input name="phone" type="tel" maxlength="80" autocomplete="tel" inputmode="tel">
             </label>
           </div>
-          <label>
-            <span>內容</span>
+          <div class="manual-content-field">
+            <label for="manualIssue">
+              <span>內容</span>
+            </label>
             <div class="textarea-resize-zone">
               <div class="text-tools" role="toolbar" aria-label="內容常用符號">
                 <button type="button" class="text-tool-button" data-text-tool="「」" aria-label="插入直角引號">「」</button>
@@ -71,10 +73,10 @@
                 <button type="button" class="text-tool-button" data-text-tool="【】" aria-label="插入重點括號">【】</button>
                 <button type="button" class="text-tool-button text-tool-clear" data-text-tool="clear" aria-label="清除目前輸入內容">清除</button>
               </div>
-              <textarea name="issue" rows="3" maxlength="240"></textarea>
+              <textarea id="manualIssue" name="issue" rows="3" maxlength="240" wrap="soft"></textarea>
               <div class="textarea-resize-handle" role="separator" aria-label="調整內容高度" tabindex="0"></div>
             </div>
-          </label>
+          </div>
           <label>
             <span>相關資料在哪裡</span>
             <input name="resource_location" type="text" maxlength="240" list="resourceOptions">

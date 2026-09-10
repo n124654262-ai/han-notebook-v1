@@ -195,6 +195,14 @@ main {
   margin-top: 12px;
 }
 
+.manual-content-field {
+  margin-top: 12px;
+}
+
+.manual-content-field > label {
+  margin-top: 0;
+}
+
 .manual-form label > span,
 .notes-label {
   display: block;
@@ -238,6 +246,9 @@ textarea {
 .textarea-resize-zone textarea {
   padding-bottom: 17px;
   resize: none;
+  overflow-x: hidden;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
 }
 
 .text-tools {
@@ -418,6 +429,31 @@ button:focus-visible {
   cursor: pointer;
 }
 
+.item-editing-indicator {
+  display: inline-flex;
+  flex: 0 0 auto;
+  align-items: center;
+  min-height: 44px;
+  padding: 8px 12px;
+  border-left: 1px solid #e0bcbc;
+  color: #a52f2f;
+  background: #fff0f0;
+  font-size: 13px;
+  font-weight: 700;
+  animation: edit-indicator-pulse 2.2s ease-in-out infinite;
+}
+
+@keyframes edit-indicator-pulse {
+  0%, 100% { opacity: 0.58; }
+  50% { opacity: 1; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .item-editing-indicator {
+    animation: none;
+  }
+}
+
 .item-details {
   padding: 2px 14px 14px;
   border-top: 1px solid #e5ebe8;
@@ -479,10 +515,11 @@ button:focus-visible {
 
 .item-edit-form {
   display: grid;
-  grid-template-columns: repeat(3, minmax(0, 1fr));
+  grid-template-columns: repeat(2, minmax(0, 1fr));
   gap: 0 8px;
 }
 
+.item-edit-form label:first-child,
 .item-edit-form label:nth-child(n + 4),
 .item-edit-form .form-actions {
   grid-column: 1 / -1;
@@ -1342,6 +1379,14 @@ button:focus-visible {
 
   .calendar-resize-handle {
     display: none;
+  }
+
+  .textarea-resize-handle {
+    display: none;
+  }
+
+  .textarea-resize-zone textarea {
+    padding-bottom: 9px;
   }
 }
 
