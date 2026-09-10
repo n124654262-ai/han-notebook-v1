@@ -20,6 +20,7 @@ const state = {
   archiveSelectedIds: new Set(),
   archiveDeleteConfirmation: null,
   editingId: null,
+  notesEditingIds: new Set(),
   itemEditDrafts: new Map(),
   calendar: {
     month: currentMonth,
@@ -789,8 +790,10 @@ function createDetails(item) {
     actionButton("行事曆", false, () => openCalendarFor(item.id)),
     actionButton("升級資源庫", false, async () => {
       if (!(await syncNote(item.id, notes.textarea, notes.status))) return;
+      const currentItem = itemById(item.id) || item;
+      const notesText = notes.textarea?.value ?? readDraft(item.id)?.text ?? currentItem.my_notes ?? "";
       if (!details.querySelector(".official-editor")) {
-        details.append(createOfficialEditor(item, notes.textarea));
+        details.append(createOfficialEditor(currentItem, notesText));
       }
     }),
     actionButton("完成", false, async () => {
@@ -809,21 +812,53 @@ function createDetails(item) {
 function createNotesEditor(item) {
   const wrapper = document.createElement("div");
   wrapper.className = "notes-block";
-  const label = document.createElement("label");
+  const header = document.createElement("div");
+  header.className = "notes-header";
+  const label = document.createElement("span");
   label.className = "notes-label";
-  label.htmlFor = `notes-${item.id}`;
   label.textContent = "我的紀錄";
-  const textarea = document.createElement("textarea");
-  textarea.id = `notes-${item.id}`;
-  textarea.className = "my-notes";
-  textarea.rows = 3;
-  textarea.maxLength = 20000;
   let draft = readDraft(item.id);
   if (draft && draft.text === item.my_notes) {
     localStorage.removeItem(`${DRAFT_PREFIX}${item.id}`);
     draft = null;
   }
-  textarea.value = draft ? draft.text : item.my_notes;
+  const value = draft ? draft.text : (item.my_notes || "");
+  const editing = state.notesEditingIds.has(item.id);
+  const editButton = document.createElement("button");
+  editButton.type = "button";
+  editButton.className = "notes-edit-toggle";
+  editButton.textContent = editing ? "完成" : "編輯紀錄";
+  editButton.addEventListener("click", () => {
+    if (editing) state.notesEditingIds.delete(item.id);
+    else state.notesEditingIds.add(item.id);
+    render();
+    if (!editing) {
+      requestAnimationFrame(() => document.getElementById(`notes-${item.id}`)?.focus());
+    }
+  });
+  header.append(label, editButton);
+
+  if (!editing) {
+    const display = document.createElement("div");
+    display.className = "my-notes-display";
+    display.textContent = value || "尚無紀錄";
+    display.classList.toggle("is-empty", !value);
+    wrapper.append(header, display);
+    if (draft) {
+      const pending = document.createElement("span");
+      pending.className = "note-status is-warning";
+      pending.textContent = "尚待同步，文字已保存在這支手機";
+      wrapper.append(pending);
+    }
+    return { wrapper, textarea: null, status: null };
+  }
+
+  const textarea = document.createElement("textarea");
+  textarea.id = `notes-${item.id}`;
+  textarea.className = "my-notes";
+  textarea.rows = 3;
+  textarea.maxLength = 20000;
+  textarea.value = value;
   const status = document.createElement("span");
   status.className = "note-status";
   status.textContent = draft ? "已暫存在這支手機，等待同步" : "已同步保存";
@@ -841,8 +876,12 @@ function createNotesEditor(item) {
     scheduleNoteSave(item.id, textarea, status);
   });
   if (draft) scheduleNoteSave(item.id, textarea, status);
-  wrapper.append(label, textarea, status);
-  autoGrowTextarea(textarea);
+  wrapper.append(header, textarea, status);
+  const grow = () => {
+    if (textarea.isConnected) autoGrowTextarea(textarea);
+    else requestAnimationFrame(grow);
+  };
+  grow();
   return { wrapper, textarea, status };
 }
 
@@ -852,7 +891,7 @@ function autoGrowTextarea(textarea) {
   textarea.style.height = `${textarea.scrollHeight + (lineHeight * 2)}px`;
 }
 
-function createOfficialEditor(item, notesTextarea) {
+function createOfficialEditor(item, notesText) {
   const editor = document.createElement("section");
   editor.className = "official-editor";
   const heading = document.createElement("h3");
@@ -861,7 +900,7 @@ function createOfficialEditor(item, notesTextarea) {
   form.className = "official-form";
   const name = formField("文件名稱", "input", `${item.object_name}｜${item.subject}`, 200);
   const original = formField("原始內容", "textarea", item.original_message, 100000);
-  const notes = formField("我的紀錄", "textarea", notesTextarea.value, 100000);
+  const notes = formField("我的紀錄", "textarea", notesText, 100000);
   const formal = formField("正式內容", "textarea", "", 100000);
   const dateField = formField("文件日期", "input", new Date().toISOString().slice(0, 10), 10);
   dateField.control.type = "date";
@@ -1015,7 +1054,7 @@ function scheduleNoteSave(itemId, textarea, status) {
 }
 
 async function syncNote(itemId, textarea, status) {
-  if (!textarea) return true;
+  if (!textarea && !readDraft(itemId)) return true;
   clearTimeout(saveTimers.get(itemId));
   const previous = savePromises.get(itemId) || Promise.resolve(true);
   const next = previous.then(() => performNoteSave(itemId, textarea, status));
@@ -1045,7 +1084,7 @@ async function performNoteSave(itemId, textarea, status) {
     } else if (latestDraft) {
       latestDraft.revision = data.item.note_revision;
       localStorage.setItem(`${DRAFT_PREFIX}${itemId}`, JSON.stringify(latestDraft));
-      scheduleNoteSave(itemId, textarea, status);
+      if (textarea) scheduleNoteSave(itemId, textarea, status);
     }
     setConnection(true, "已連線");
     return true;
