@@ -824,7 +824,6 @@ function createNotesEditor(item) {
     draft = null;
   }
   textarea.value = draft ? draft.text : item.my_notes;
-  autoGrowTextarea(textarea);
   const status = document.createElement("span");
   status.className = "note-status";
   status.textContent = draft ? "已暫存在這支手機，等待同步" : "已同步保存";
@@ -843,6 +842,7 @@ function createNotesEditor(item) {
   });
   if (draft) scheduleNoteSave(item.id, textarea, status);
   wrapper.append(label, textarea, status);
+  autoGrowTextarea(textarea);
   return { wrapper, textarea, status };
 }
 
