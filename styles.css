@@ -537,6 +537,10 @@ button:focus-visible {
   margin-top: 12px;
 }
 
+.item-edit-form .notes-block {
+  grid-column: 1 / -1;
+}
+
 .detail-list {
   margin: 0;
 }
@@ -595,7 +599,7 @@ button:focus-visible {
 }
 
 .my-notes {
-  min-height: 84px;
+  min-height: 132px;
   overflow-y: hidden;
   resize: none;
 }

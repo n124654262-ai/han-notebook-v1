@@ -729,8 +729,9 @@ function createDetails(item) {
   const details = document.createElement("div");
   details.className = "item-details";
   const editing = state.editingId === item.id;
+  let editForm = null;
   if (editing) {
-    details.append(createItemEditForm(item));
+    editForm = createItemEditForm(item);
   } else {
     const list = document.createElement("dl");
     list.className = "detail-list";
@@ -766,11 +767,14 @@ function createDetails(item) {
   }
 
   const notes = createNotesEditor(item);
-  details.append(notes.wrapper);
   if (editing) {
+    const actions = editForm.querySelector(".form-actions");
+    editForm.insertBefore(notes.wrapper, actions);
+    details.append(editForm);
     details.classList.add("is-editing");
     return details;
   }
+  details.append(notes.wrapper);
   const actions = document.createElement("div");
   actions.className = "item-actions";
   if (item.in_archive) {
@@ -844,7 +848,8 @@ function createNotesEditor(item) {
 
 function autoGrowTextarea(textarea) {
   textarea.style.height = "auto";
-  textarea.style.height = `${textarea.scrollHeight}px`;
+  const lineHeight = Number.parseFloat(getComputedStyle(textarea).lineHeight) || 24;
+  textarea.style.height = `${textarea.scrollHeight + (lineHeight * 2)}px`;
 }
 
 function createOfficialEditor(item, notesTextarea) {
