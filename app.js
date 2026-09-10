@@ -109,6 +109,13 @@ function remoteDoc(data) {
   return { id: data.id, ...data };
 }
 
+function itemDisplayTitle(item) {
+  const title = String(item?.object_name || "").trim();
+  if (title) return title;
+  const fallback = String(item?.subject || "").trim();
+  return fallback || "未命名事項";
+}
+
 function remoteItemList(view) {
   const flag = view === "todo" ? "in_todo" : view === "archive" ? "in_archive" : "in_inbox";
   return remote.items
@@ -592,7 +599,7 @@ function createItemRow(item) {
     checkbox.type = "checkbox";
     checkbox.className = "archive-select";
     checkbox.checked = state.archiveSelectedIds.has(item.id);
-    checkbox.setAttribute("aria-label", `選取 ${item.object_name}｜${item.subject}`);
+    checkbox.setAttribute("aria-label", `選取 ${itemDisplayTitle(item)}`);
     checkbox.addEventListener("click", (event) => event.stopPropagation());
     checkbox.addEventListener("change", () => {
       if (checkbox.checked) state.archiveSelectedIds.add(item.id);
@@ -605,7 +612,7 @@ function createItemRow(item) {
   const title = document.createElement("button");
   title.type = "button";
   title.className = "item-title";
-  title.textContent = `${item.object_name}｜${item.subject}`;
+  title.textContent = itemDisplayTitle(item);
   title.setAttribute("aria-expanded", String(state.expandedIds.has(item.id)));
   title.addEventListener("click", () => {
     const collapsing = state.expandedIds.has(item.id);
@@ -654,10 +661,10 @@ function createItemEditForm(item) {
   };
   const values = { ...original, ...(state.itemEditDrafts.get(item.id) || {}) };
   const fields = [
-    ["對象", "object_name", "input"],
+    ["標題／事項", "object_name", "input"],
     ["聯絡人", "contact_name", "input"],
     ["電話", "phone", "input"],
-    ["事情", "subject", "input"],
+    ["內容", "subject", "input"],
     ["資料位置", "resource_location", "input"],
   ];
   const controls = {};
@@ -722,7 +729,7 @@ function createDetails(item) {
     const topRow = document.createElement("div");
     topRow.className = "detail-top-row";
     const topPairs = [
-      ["對象", item.object_name],
+      ["標題／事項", item.object_name],
       ["聯絡人", item.contact_name],
       ["電話", item.phone],
     ];
@@ -737,7 +744,7 @@ function createDetails(item) {
       topRow.append(wrapper);
     }
     list.append(topRow);
-    for (const [label, value] of [["事情", item.subject], ["資料位置", item.resource_location]]) {
+    for (const [label, value] of [["內容", item.subject], ["資料位置", item.resource_location]]) {
       const wrapper = document.createElement("div");
       wrapper.className = "detail-pair detail-full-row";
       const term = document.createElement("dt");
@@ -893,6 +900,71 @@ function formField(labelText, type, value, maxLength) {
   if (type === "textarea") control.rows = 4;
   wrapper.append(label, control);
   return { wrapper, control };
+}
+
+function wrapTextareaSelection(textarea, pair) {
+  const start = textarea.selectionStart ?? textarea.value.length;
+  const end = textarea.selectionEnd ?? start;
+  const selected = textarea.value.slice(start, end);
+  textarea.value = `${textarea.value.slice(0, start)}${pair[0]}${selected}${pair[1]}${textarea.value.slice(end)}`;
+  textarea.focus();
+  if (start === end) {
+    const cursor = start + pair[0].length;
+    textarea.setSelectionRange(cursor, cursor);
+  } else {
+    textarea.setSelectionRange(start + pair[0].length, end + pair[0].length);
+  }
+  textarea.dispatchEvent(new Event("input", { bubbles: true }));
+}
+
+function setupManualTextTools() {
+  const textarea = elements.manualForm.querySelector('textarea[name="issue"]');
+  if (!textarea) return;
+  for (const button of elements.manualForm.querySelectorAll("[data-text-tool]")) {
+    button.addEventListener("click", () => {
+      const tool = button.dataset.textTool || "";
+      if (tool === "clear") {
+        if (!textarea.value) return;
+        if (!window.confirm("清除目前輸入的內容？")) return;
+        textarea.value = "";
+        textarea.focus();
+        textarea.dispatchEvent(new Event("input", { bubbles: true }));
+        return;
+      }
+      if (tool.length === 2) wrapTextareaSelection(textarea, [tool[0], tool[1]]);
+    });
+  }
+}
+
+function setupManualTextareaResize() {
+  const zone = elements.manualForm.querySelector(".textarea-resize-zone");
+  const textarea = zone?.querySelector("textarea");
+  const handle = zone?.querySelector(".textarea-resize-handle");
+  if (!textarea || !handle) return;
+  let drag = null;
+  const minimumHeight = () => Math.max(84, parseFloat(getComputedStyle(textarea).minHeight) || 84);
+  handle.addEventListener("pointerdown", (event) => {
+    event.preventDefault();
+    handle.setPointerCapture?.(event.pointerId);
+    drag = { startY: event.clientY, startHeight: textarea.getBoundingClientRect().height };
+    handle.classList.add("is-dragging");
+  });
+  handle.addEventListener("pointermove", (event) => {
+    if (!drag) return;
+    const height = Math.max(minimumHeight(), drag.startHeight + event.clientY - drag.startY);
+    textarea.style.height = `${height}px`;
+  });
+  const stop = () => {
+    drag = null;
+    handle.classList.remove("is-dragging");
+  };
+  handle.addEventListener("pointerup", stop);
+  handle.addEventListener("pointercancel", stop);
+  handle.addEventListener("lostpointercapture", stop);
+}
+
+function resetManualTextareaHeight() {
+  elements.manualForm.querySelector(".textarea-resize-zone textarea")?.style.removeProperty("height");
 }
 
 function actionButton(text, disabled, handler, title = "", extraClass = "") {
@@ -1619,9 +1691,13 @@ function createResourceDetails(documentData) {
   return details;
 }
 
+setupManualTextTools();
+setupManualTextareaResize();
+
 elements.manualToggle.addEventListener("click", () => setManualForm(elements.manualForm.hidden));
 elements.manualCancel.addEventListener("click", () => {
   elements.manualForm.reset();
+  resetManualTextareaHeight();
   setManualForm(false);
 });
 
@@ -1643,6 +1719,7 @@ elements.manualForm.addEventListener("submit", async (event) => {
       }),
     });
     elements.manualForm.reset();
+    resetManualTextareaHeight();
     setManualForm(false);
     showNotice("已存入暫存區");
     await loadItems({ keepExpanded: false });
