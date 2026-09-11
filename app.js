@@ -220,7 +220,7 @@ function attachRemoteListeners() {
   remote.unsubscribers.push(remoteCollection("calendar_blocks").onSnapshot((snapshot) => {
     remote.blocks = snapshot.docs.map((doc) => remoteDoc(doc.data()));
     remoteRefreshCalendar();
-    if (state.view === "calendar") render();
+    render();
   }, () => setConnection(false, "同步中斷，稍後重試")));
   remote.unsubscribers.push(remoteCollection("documents").onSnapshot((snapshot) => {
     remote.documents = snapshot.docs.map((doc) => remoteDoc(doc.data()));
@@ -625,6 +625,14 @@ function createItemRow(item) {
     render();
   });
   titleRow.append(title);
+  const calendarBlock = calendarBlockForItem(item.id);
+  if (calendarBlock) {
+    const schedule = document.createElement("span");
+    schedule.className = `item-calendar-meta ${calendarReminderClass(calendarBlock)}`;
+    schedule.textContent = `${formatCalendarShortDate(calendarBlock.start_date)}～${formatCalendarShortDate(calendarBlock.end_date)}｜共${countWeekdays(calendarBlock.start_date, calendarBlock.end_date)}天`;
+    schedule.title = "行事曆安排與工作天數";
+    titleRow.append(schedule);
+  }
   if (state.expandedIds.has(item.id) && !editing) {
     const edit = document.createElement("button");
     edit.type = "button";
@@ -1155,44 +1163,26 @@ function countWeekdays(start, end) {
   return count;
 }
 
-async function saveCalendarWorkdayNote(itemId, start, end) {
-  const item = itemById(itemId) || remote.items.find((candidate) => candidate.id === itemId);
-  if (!item) return;
-  const line = `行事曆工作天數：${countWeekdays(start, end)} 天（${start.replaceAll("-", "/")}～${end.replaceAll("-", "/")}，不含六、日）`;
-  const notes = String(item.my_notes || "").split("\n").filter((entry) => entry && !entry.startsWith("行事曆工作天數："));
-  notes.push(line);
-  let revision = Number(item.note_revision || 0);
-  for (let attempt = 0; attempt < 2; attempt += 1) {
-    try {
-      const data = await api(`/api/items/${itemId}/notes`, {
-        method: "PATCH",
-        body: JSON.stringify({ my_notes: notes.join("\n"), revision }),
-      });
-      Object.assign(item, data.item);
-      return;
-    } catch (error) {
-      if (error.status !== 409 || !error.item) break;
-      revision = Number(error.item.note_revision || 0);
-      notes.splice(0, notes.length, ...String(error.item.my_notes || "").split("\n").filter((entry) => entry && !entry.startsWith("行事曆工作天數：")), line);
-    }
-  }
-  showNotice("日期已更新，但工作天數文字尚未寫入我的紀錄。", true);
+function calendarBlockForItem(itemId) {
+  const blocks = remote.enabled ? remote.blocks : state.calendar.blocks;
+  return blocks.find((block) => block.item_id === itemId && block.start_date && block.end_date) || null;
 }
 
-async function removeCalendarWorkdayNote(itemId) {
-  const item = itemById(itemId) || remote.items.find((candidate) => candidate.id === itemId);
-  if (!item) return;
-  const notes = String(item.my_notes || "").split("\n").filter((entry) => entry && !entry.startsWith("行事曆工作天數："));
-  if (notes.join("\n") === String(item.my_notes || "")) return;
-  try {
-    const data = await api(`/api/items/${itemId}/notes`, {
-      method: "PATCH",
-      body: JSON.stringify({ my_notes: notes.join("\n"), revision: Number(item.note_revision || 0) }),
-    });
-    Object.assign(item, data.item);
-  } catch (_error) {
-    showNotice("時間條已刪除，但工作天數文字尚未從我的紀錄移除。", true);
-  }
+function formatCalendarShortDate(value) {
+  const match = String(value || "").match(/^\d{4}-(\d{2})-(\d{2})$/);
+  return match ? `${match[1]}/${match[2]}` : String(value || "");
+}
+
+function workdaysUntil(startDate) {
+  const today = isoDate(new Date());
+  if (startDate <= today) return 0;
+  return countWeekdays(isoDate(addDays(today, 1)), startDate);
+}
+
+function calendarReminderClass(block) {
+  const today = isoDate(new Date());
+  if (block.end_date < today || block.start_date <= today) return "is-urgent";
+  return workdaysUntil(block.start_date) > 10 ? "is-safe" : "is-urgent";
 }
 
 async function deleteSelectedCalendarBlock() {
@@ -1202,7 +1192,6 @@ async function deleteSelectedCalendarBlock() {
   if (!window.confirm(`確定刪除「${block.title}」的行事曆時間條？`)) return;
   try {
     await api(`/api/calendar/blocks/${block.id}`, { method: "DELETE" });
-    await removeCalendarWorkdayNote(block.item_id);
     state.calendar.selectedBlockId = null;
     showNotice("已刪除行事曆時間條");
     await loadCalendar();
@@ -1227,7 +1216,6 @@ async function saveCalendarDates() {
       method: "PATCH",
       body: JSON.stringify({ start_date: start, end_date: end }),
     });
-    await saveCalendarWorkdayNote(block.item_id, start, end);
     showNotice("已更新行事曆時間");
     await loadCalendar();
   } catch (error) {
@@ -1585,7 +1573,6 @@ async function finishCalendarPointer(event) {
         method: "POST",
         body: JSON.stringify({ item_id: state.calendar.selectedItemId, start_date: start, end_date: end }),
       });
-      await saveCalendarWorkdayNote(state.calendar.selectedItemId, start, end);
       state.calendar.selectedItemId = null;
       state.calendar.drag = null;
       showNotice("已建立行事曆時間長條");
@@ -1600,7 +1587,6 @@ async function finishCalendarPointer(event) {
   const delta = dateDiff(drag.originDate, drag.currentDate);
   let start = drag.startDate;
   let end = drag.endDate;
-  const blockItemId = state.calendar.blocks.find((block) => block.id === drag.blockId)?.item_id;
   if (drag.mode === "move") {
     start = isoDate(addDays(start, delta));
     end = isoDate(addDays(end, delta));
@@ -1619,7 +1605,6 @@ async function finishCalendarPointer(event) {
       method: "PATCH",
       body: JSON.stringify({ start_date: start, end_date: end }),
     });
-    await saveCalendarWorkdayNote(blockItemId, start, end);
     state.calendar.drag = null;
     showNotice("已更新行事曆時間");
     await loadCalendar();

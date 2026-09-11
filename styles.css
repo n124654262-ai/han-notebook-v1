@@ -429,6 +429,25 @@ button:focus-visible {
   cursor: pointer;
 }
 
+.item-calendar-meta {
+  flex: 0 0 auto;
+  align-self: center;
+  max-width: 220px;
+  padding: 3px 6px;
+  color: #1b7658;
+  font-size: 12px;
+  line-height: 1.2;
+  white-space: nowrap;
+}
+
+.item-calendar-meta.is-urgent {
+  color: #b03a3a;
+}
+
+.item-calendar-meta.is-safe {
+  color: #1b7658;
+}
+
 .item-editing-indicator {
   display: inline-flex;
   flex: 0 0 auto;
