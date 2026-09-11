@@ -2,6 +2,12 @@
 
 const DRAFT_PREFIX = "han-notebook-note:";
 const currentMonth = new Date().toISOString().slice(0, 7);
+// 2028 先放主要節日；官方補班表公布後再更新。
+const NATIONAL_HOLIDAYS = {
+  "2026-01-01": "元旦", "2026-02-17": "春節", "2026-02-28": "和平紀念日", "2026-04-04": "兒童節", "2026-04-05": "清明節", "2026-05-01": "勞動節", "2026-06-19": "端午節", "2026-09-25": "中秋節", "2026-10-10": "國慶日",
+  "2027-01-01": "元旦", "2027-02-06": "春節", "2027-02-28": "和平紀念日", "2027-04-04": "兒童節", "2027-04-05": "清明節", "2027-05-01": "勞動節", "2027-06-09": "端午節", "2027-09-15": "中秋節", "2027-10-10": "國慶日",
+  "2028-01-01": "元旦", "2028-01-26": "春節", "2028-02-28": "和平紀念日", "2028-04-04": "清明節", "2028-05-01": "勞動節", "2028-05-28": "端午節", "2028-10-03": "中秋節", "2028-10-10": "國慶日",
+};
 const FIREBASE_CONFIG = globalThis.HAN_FIREBASE_CONFIG || {
   apiKey: "AIzaSyCjZtrVC4fpTpoffi-UcI_EObX102XCAwA",
   authDomain: "han-notebook-v1.firebaseapp.com",
@@ -19,6 +25,7 @@ const state = {
   expandedIds: new Set(),
   archiveSelectedIds: new Set(),
   archiveDeleteConfirmation: null,
+  completeConfirmations: new Set(),
   editingId: null,
   notesEditingIds: new Set(),
   itemEditDrafts: new Map(),
@@ -629,7 +636,13 @@ function createItemRow(item) {
   if (calendarBlock) {
     const schedule = document.createElement("span");
     schedule.className = "item-calendar-meta";
-    schedule.textContent = `${formatCalendarShortDate(calendarBlock.start_date)}～${formatCalendarShortDate(calendarBlock.end_date)}（${calendarCountdownText(calendarBlock)}）`;
+    const range = document.createElement("span");
+    range.className = "item-calendar-range";
+    range.textContent = `${formatCalendarShortDate(calendarBlock.start_date)}～${formatCalendarShortDate(calendarBlock.end_date)}`;
+    const countdown = document.createElement("span");
+    countdown.className = "item-calendar-countdown";
+    countdown.textContent = calendarCountdownShortText(calendarBlock);
+    schedule.append(range, countdown);
     schedule.title = "行事曆安排與工作天數";
     titleRow.append(schedule);
   }
@@ -804,11 +817,18 @@ function createDetails(item) {
         details.append(createOfficialEditor(currentItem, notesText));
       }
     }),
-    actionButton("完成", false, async () => {
+    actionButton(state.completeConfirmations.has(item.id) ? "再次完成" : "完成", false, async () => {
       if (!(await syncNote(item.id, notes.textarea, notes.status))) {
         showNotice("我的紀錄還沒同步，為避免遺失，現在不能完成。", true);
         return;
       }
+      if (!state.completeConfirmations.has(item.id)) {
+        state.completeConfirmations.add(item.id);
+        showNotice("再按一次完成，才會移到封存區");
+        render();
+        return;
+      }
+      state.completeConfirmations.delete(item.id);
       await runItemAction(item.id, "complete", "已完成並移出工作清單");
       localStorage.removeItem(`${DRAFT_PREFIX}${item.id}`);
     }, "", "complete"),
@@ -1186,6 +1206,13 @@ function calendarCountdownText(block) {
   return `距開始還有${workdaysUntil(block.start_date)}工作天`;
 }
 
+function calendarCountdownShortText(block) {
+  const today = isoDate(new Date());
+  if (block.end_date < today) return "已結束";
+  if (block.start_date <= today) return "今天";
+  return `剩${workdaysUntil(block.start_date)}天`;
+}
+
 async function deleteSelectedCalendarBlock() {
   if (isSmallCalendarScreen()) return;
   const block = state.calendar.blocks.find((candidate) => candidate.id === state.calendar.selectedBlockId);
@@ -1395,10 +1422,23 @@ function renderCalendar() {
       day.className = "calendar-day";
       day.dataset.date = isoDate(dayDate);
       if (dayDate.getMonth() !== monthDate.getMonth()) day.classList.add("is-outside");
+      const dateKey = day.dataset.date;
+      const holidayName = NATIONAL_HOLIDAYS[dateKey];
+      if (dateKey === isoDate(new Date())) day.classList.add("is-today");
+      if (holidayName) {
+        day.classList.add("is-holiday");
+        day.title = holidayName;
+      }
       const number = document.createElement("span");
       number.className = "calendar-day-number";
       number.textContent = String(dayDate.getDate());
       day.append(number);
+      if (holidayName) {
+        const holiday = document.createElement("span");
+        holiday.className = "calendar-holiday-name";
+        holiday.textContent = holidayName;
+        day.append(holiday);
+      }
       day.addEventListener("pointerdown", (event) => beginCalendarCreate(event, day.dataset.date));
       row.append(day);
       days.push(day);
@@ -1811,7 +1851,10 @@ for (const tab of elements.tabs) {
     if (state.view !== "archive") state.archiveSelectedIds.clear();
     state.editingId = null;
     showNotice("");
-    if (state.view === "calendar") void loadCalendar();
+    if (state.view === "calendar") {
+      state.calendar.month = new Date().toISOString().slice(0, 7);
+      void loadCalendar();
+    }
     else if (state.view === "resources") void loadResources();
     else render();
   });
