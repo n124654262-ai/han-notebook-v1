@@ -434,18 +434,10 @@ button:focus-visible {
   align-self: center;
   max-width: 220px;
   padding: 3px 6px;
-  color: #1b7658;
+  color: #b03a3a;
   font-size: 12px;
   line-height: 1.2;
   white-space: nowrap;
-}
-
-.item-calendar-meta.is-urgent {
-  color: #b03a3a;
-}
-
-.item-calendar-meta.is-safe {
-  color: #1b7658;
 }
 
 .item-editing-indicator {

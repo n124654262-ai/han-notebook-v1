@@ -628,8 +628,8 @@ function createItemRow(item) {
   const calendarBlock = calendarBlockForItem(item.id);
   if (calendarBlock) {
     const schedule = document.createElement("span");
-    schedule.className = `item-calendar-meta ${calendarReminderClass(calendarBlock)}`;
-    schedule.textContent = `${formatCalendarShortDate(calendarBlock.start_date)}～${formatCalendarShortDate(calendarBlock.end_date)}｜共${countWeekdays(calendarBlock.start_date, calendarBlock.end_date)}天`;
+    schedule.className = "item-calendar-meta";
+    schedule.textContent = `${formatCalendarShortDate(calendarBlock.start_date)}～${formatCalendarShortDate(calendarBlock.end_date)}（${calendarCountdownText(calendarBlock)}）`;
     schedule.title = "行事曆安排與工作天數";
     titleRow.append(schedule);
   }
@@ -1179,10 +1179,11 @@ function workdaysUntil(startDate) {
   return countWeekdays(isoDate(addDays(today, 1)), startDate);
 }
 
-function calendarReminderClass(block) {
+function calendarCountdownText(block) {
   const today = isoDate(new Date());
-  if (block.end_date < today || block.start_date <= today) return "is-urgent";
-  return workdaysUntil(block.start_date) > 10 ? "is-safe" : "is-urgent";
+  if (block.end_date < today) return "已結束";
+  if (block.start_date <= today) return "今天開始";
+  return `距開始還有${workdaysUntil(block.start_date)}工作天`;
 }
 
 async function deleteSelectedCalendarBlock() {
