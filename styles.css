@@ -178,10 +178,17 @@ main {
   min-height: 44px;
   padding: 8px 14px;
   border: 0;
+  border-top: 2px solid var(--green);
   color: var(--green-dark);
-  background: #ffffff;
+  background: #e6f3ed;
+  font-weight: 700;
   text-align: left;
   cursor: pointer;
+}
+
+.manual-toggle:hover,
+.manual-toggle:focus-visible {
+  background: #d6ebe1;
 }
 
 .manual-form {
@@ -381,10 +388,18 @@ button:focus-visible {
   border-bottom: 1px solid var(--line);
 }
 
+.item-row + .item-row {
+  border-top: 1px solid #c8d9d1;
+}
+
 .item-title-row {
   display: flex;
   align-items: stretch;
-  background: #ffffff;
+  background: #f7faf8;
+}
+
+.item-row:nth-child(even) .item-title-row {
+  background: #eef5f1;
 }
 
 .archive-select {
@@ -627,7 +642,7 @@ button:focus-visible {
   border: 1px solid var(--green);
   border-radius: 4px;
   color: var(--green-dark);
-  background: #ffffff;
+  background: transparent;
   font-size: 13px;
 }
 

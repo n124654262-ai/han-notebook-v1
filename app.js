@@ -1319,11 +1319,25 @@ function finishCalendarSwipe(event) {
   const deltaX = touch.clientX - start.x;
   const deltaY = touch.clientY - start.y;
   if (Math.abs(deltaX) < 48 || Math.abs(deltaX) < Math.abs(deltaY) * 1.2) return;
-  changeMonth(deltaX < 0 ? -1 : 1);
+  // 手機手勢：往左滑切到下個月，往右滑回上個月。
+  changeMonth(deltaX < 0 ? 1 : -1);
 }
 
 function cancelCalendarSwipe() {
   state.calendar.swipeStart = null;
+}
+
+let calendarWheelTimer = null;
+
+function handleCalendarWheel(event) {
+  if (isSmallCalendarScreen() || !event.deltaY) return;
+  event.preventDefault();
+  if (calendarWheelTimer) return;
+  calendarWheelTimer = window.setTimeout(() => {
+    calendarWheelTimer = null;
+  }, 220);
+  // 電腦滾輪：往上看上個月，往下看下個月。
+  changeMonth(event.deltaY < 0 ? -1 : 1);
 }
 
 function changeMonth(delta) {
@@ -1777,6 +1791,7 @@ elements.calendarSaveDates.addEventListener("click", () => void saveCalendarDate
 elements.calendarGrid.addEventListener("touchstart", startCalendarSwipe, { passive: true });
 elements.calendarGrid.addEventListener("touchend", finishCalendarSwipe, { passive: true });
 elements.calendarGrid.addEventListener("touchcancel", cancelCalendarSwipe, { passive: true });
+elements.calendarGrid.addEventListener("wheel", handleCalendarWheel, { passive: false });
 elements.calendarClearSelection.addEventListener("click", () => {
   state.calendar.selectedItemId = null;
   state.calendar.selectedBlockId = null;
