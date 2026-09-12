@@ -1,0 +1,12 @@
+:root { color-scheme: light; font-family: system-ui,-apple-system,"Segoe UI",sans-serif; color:#26352f; background:#f6f9f7; }
+* { box-sizing:border-box; } body { margin:0; } .life-page { width:min(100%,760px); margin:0 auto; padding:18px 16px 36px; }
+.back-link { color:#176c56; text-decoration:none; font-size:15px; } h1 { margin:18px 0 20px; font-size:25px; font-weight:650; }
+.life-entry { display:grid; grid-template-columns:auto minmax(0,1fr) auto; gap:8px; align-items:center; }
+.life-entry input { width:100%; min-height:44px; border:1px solid #a8bbb3; border-radius:5px; padding:8px 12px; font:inherit; background:#fff; }
+button { min-height:44px; border-radius:5px; padding:8px 14px; font:inherit; cursor:pointer; } button:focus-visible,input:focus-visible { outline:3px solid #9bcdbd; outline-offset:1px; }
+.voice-button { border:1px solid #176c56; color:#176c56; background:#fff; } .add-button { border:1px solid #176c56; color:#fff; background:#176c56; }
+.life-status { min-height:22px; margin:10px 0 4px; color:#176c56; font-size:14px; } .life-status.is-error { color:#a13e3e; }
+.life-list { list-style:none; padding:0; margin:0; border-top:1px solid #d3dfda; } .life-item { display:grid; grid-template-columns:auto minmax(0,1fr) auto; gap:10px; align-items:center; min-height:52px; padding:7px 0; border-bottom:1px solid #d3dfda; }
+.life-item input[type=checkbox] { width:22px; height:22px; accent-color:#176c56; } .life-text { overflow-wrap:anywhere; font-size:17px; } .life-item.is-done .life-text { color:#7b8984; text-decoration:line-through; }
+.delete-button { min-height:34px; padding:4px 10px; border:1px solid #b8c7c1; color:#6a7772; background:#fff; font-size:14px; } .life-empty { margin:22px 0; color:#7b8984; }
+@media (max-width:520px) { .life-page { padding:14px 12px 28px; } h1 { margin:14px 0 16px; font-size:22px; } .life-entry { grid-template-columns:auto minmax(0,1fr); } .add-button { grid-column:1/-1; width:100%; } .life-text { font-size:16px; } }
