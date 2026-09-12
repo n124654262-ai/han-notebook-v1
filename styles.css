@@ -59,7 +59,7 @@ button {
 
 .app-header h1 {
   margin: 0;
-  font-size: 18px;
+  font-size: 16px;
   line-height: 28px;
 }
 
@@ -102,7 +102,7 @@ button {
   text-decoration: none;
 }
 
-.life-entry-button { display:inline-flex; align-items:center; min-height:30px; padding:4px 12px; border:1px solid #16745b; border-radius:4px; color:#12634f; text-decoration:none; background:#e7f4ef; font-size:13px; white-space:nowrap; }
+.life-entry-button { display:inline-flex; align-items:center; justify-content:center; min-height:34px; max-width:210px; padding:5px 9px; border:1px solid var(--green); border-radius:5px; color:var(--green-dark); text-decoration:none; background:#ffffff; font-size:13px; white-space:nowrap; }
 .life-entry-button:hover, .life-entry-button:focus-visible { background:#cde9df; }
 
 .sync-state {

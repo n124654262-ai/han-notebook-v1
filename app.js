@@ -412,7 +412,7 @@ function initializeFirebase() {
   remote.auth = firebase.auth();
   remote.db = firebase.firestore();
   remote.enabled = true;
-  elements.authButton.addEventListener("click", async () => {
+if (elements.authButton) elements.authButton.addEventListener("click", async () => {
     if (remote.user) {
       await remote.auth.signOut();
       return;
@@ -427,7 +427,7 @@ function initializeFirebase() {
   });
   remote.auth.onAuthStateChanged((user) => {
     remote.user = user;
-    elements.authButton.textContent = user ? `登出 ${user.email || "Google 帳號"}` : "使用 Google 帳號登入";
+    if (elements.authButton) elements.authButton.textContent = user ? `登出 ${user.email || "Google 帳號"}` : "使用 Google 帳號登入";
     if (!user) {
       for (const unsubscribe of remote.unsubscribers) unsubscribe();
       remote.unsubscribers = [];
