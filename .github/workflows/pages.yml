@@ -32,6 +32,8 @@ jobs:
           mkdir -p _site/employee
           cp index.html app.js gmail-reader.js styles.css firebase-config.js submit.js 404.html _site/
           cp employee/index.html _site/employee/index.html
+          mkdir -p _site/life
+          cp life/index.html life/life.js life/life.css _site/life/
       - name: 打包靜態網站
         uses: actions/upload-pages-artifact@v3
         with:
