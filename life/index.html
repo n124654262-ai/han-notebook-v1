@@ -1,0 +1,18 @@
+<!doctype html>
+<html lang="zh-Hant">
+<head>
+  <meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>生活雜事</title><link rel="stylesheet" href="life.css?v=life-0912-1">
+</head>
+<body><main class="life-page">
+  <a class="back-link" href="../">← 返回 HAN 筆記本</a>
+  <h1>生活雜事</h1>
+  <form id="lifeForm" class="life-entry" autocomplete="off">
+    <button id="voiceButton" class="voice-button" type="button">🎤 語音</button>
+    <input id="lifeInput" name="text" type="text" maxlength="240" placeholder="輸入生活雜事……" autocomplete="off">
+    <button class="add-button" type="submit">新增</button>
+  </form>
+  <p id="lifeStatus" class="life-status" role="status" aria-live="polite"></p>
+  <ul id="lifeList" class="life-list"></ul><p id="lifeEmpty" class="life-empty">目前沒有生活雜事</p>
+</main><script src="life.js?v=life-0912-1" defer></script></body>
+</html>
