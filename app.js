@@ -580,6 +580,25 @@ function renderList() {
     actions.className = "archive-batch-actions";
     const count = document.createElement("span");
     count.textContent = `已選取 ${state.archiveSelectedIds.size} 筆`;
+    const selectAll = document.createElement("button");
+    selectAll.type = "button";
+    selectAll.className = "archive-selection-button";
+    selectAll.textContent = "全選";
+    selectAll.addEventListener("click", () => {
+      state.archiveSelectedIds = new Set(items.map((item) => item.id));
+      state.archiveDeleteConfirmation = null;
+      renderList();
+    });
+    const clearSelection = document.createElement("button");
+    clearSelection.type = "button";
+    clearSelection.className = "archive-selection-button";
+    clearSelection.textContent = "清除選取";
+    clearSelection.disabled = state.archiveSelectedIds.size === 0;
+    clearSelection.addEventListener("click", () => {
+      state.archiveSelectedIds.clear();
+      state.archiveDeleteConfirmation = null;
+      renderList();
+    });
     const button = document.createElement("button");
     button.type = "button";
     button.className = "danger-button";
@@ -591,7 +610,7 @@ function renderList() {
     button.classList.toggle("is-confirming", Boolean(confirming));
     button.disabled = state.archiveSelectedIds.size === 0;
     button.addEventListener("click", () => void deleteSelectedArchiveItems());
-    actions.append(count, button);
+    actions.append(count, selectAll, clearSelection, button);
     elements.listSection.append(actions);
   }
 }

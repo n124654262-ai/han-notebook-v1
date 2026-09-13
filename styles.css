@@ -553,6 +553,20 @@ button:focus-visible {
   gap: 0 8px;
 }
 
+.archive-selection-button {
+  min-height: 34px;
+  padding: 6px 12px;
+  border: 1px solid #16745b;
+  border-radius: 4px;
+  color: #12634f;
+  background: #ffffff;
+}
+
+.archive-selection-button:disabled {
+  cursor: default;
+  opacity: 0.55;
+}
+
 .item-edit-form label:first-child,
 .item-edit-form label:nth-child(n + 4),
 .item-edit-form .form-actions {
