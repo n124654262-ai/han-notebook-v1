@@ -84,6 +84,26 @@ const elements = {
 
 const saveTimers = new Map();
 const savePromises = new Map();
+const VIEWED_EXTERNAL_ITEMS_KEY = "han-notebook-viewed-external-items";
+
+function viewedExternalItemIds() {
+  try {
+    const value = JSON.parse(localStorage.getItem(VIEWED_EXTERNAL_ITEMS_KEY) || "[]");
+    return new Set(Array.isArray(value) ? value.map(String) : []);
+  } catch { return new Set(); }
+}
+
+function markExternalItemViewed(itemId) {
+  const ids = viewedExternalItemIds();
+  ids.add(String(itemId));
+  try { localStorage.setItem(VIEWED_EXTERNAL_ITEMS_KEY, JSON.stringify([...ids])); } catch {}
+}
+
+function updateDocumentTitle() {
+  const viewed = viewedExternalItemIds();
+  const unread = state.inboxItems.filter((item) => item.source_type === "external" && !viewed.has(String(item.id))).length;
+  document.title = unread > 0 ? `（${unread}）HAN 筆記本` : "HAN 筆記本";
+}
 
 // 公開網站使用 Firebase；本機開發仍保留原本的 Python API。
 const remote = {
@@ -557,6 +577,7 @@ function render() {
   elements.listSection.hidden = !isListView;
   elements.calendarPanel.hidden = state.view !== "calendar";
   elements.resourcesPanel.hidden = state.view !== "resources";
+  updateDocumentTitle();
   if (isListView) renderList();
   if (state.view === "calendar") renderCalendar();
   if (state.view === "resources") renderResources();
@@ -644,6 +665,7 @@ function createItemRow(item) {
   title.textContent = itemDisplayTitle(item);
   title.setAttribute("aria-expanded", String(state.expandedIds.has(item.id)));
   title.addEventListener("click", () => {
+    if (item.source_type === "external") markExternalItemViewed(item.id);
     const collapsing = state.expandedIds.has(item.id);
     if (collapsing) state.expandedIds.delete(item.id);
     else state.expandedIds.add(item.id);

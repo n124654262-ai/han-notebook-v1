@@ -406,11 +406,11 @@ button:focus-visible {
 .item-title-row {
   display: flex;
   align-items: stretch;
-  background: #f7faf8;
+  background: #fff8d9;
 }
 
 .item-row:nth-child(even) .item-title-row {
-  background: #eef5f1;
+  background: #fff8d9;
 }
 
 .archive-select {
@@ -431,7 +431,7 @@ button:focus-visible {
   overflow: hidden;
   border: 0;
   color: #17211d;
-  background: #ffffff;
+  background: #fff8d9;
   text-align: left;
   text-overflow: ellipsis;
   white-space: nowrap;
@@ -440,7 +440,7 @@ button:focus-visible {
 
 .item-title[aria-expanded="true"] {
   color: var(--green-dark);
-  background: #dcebe4;
+  background: #fff8d9;
   font-weight: 700;
 }
 
