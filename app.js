@@ -639,6 +639,7 @@ function renderList() {
 function createItemRow(item) {
   const row = document.createElement("li");
   row.className = "item-row";
+  row.classList.toggle("is-external", item.source_type === "external");
   row.dataset.itemId = item.id;
   const titleRow = document.createElement("div");
   titleRow.className = "item-title-row";

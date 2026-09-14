@@ -406,10 +406,16 @@ button:focus-visible {
 .item-title-row {
   display: flex;
   align-items: stretch;
-  background: #fff8d9;
+  background: #f7faf8;
 }
 
 .item-row:nth-child(even) .item-title-row {
+  background: #eef5f1;
+}
+
+.item-row.is-external .item-title-row,
+.item-row.is-external .item-title,
+.item-row.is-external .item-title[aria-expanded="true"] {
   background: #fff8d9;
 }
 
@@ -431,7 +437,7 @@ button:focus-visible {
   overflow: hidden;
   border: 0;
   color: #17211d;
-  background: #fff8d9;
+  background: #ffffff;
   text-align: left;
   text-overflow: ellipsis;
   white-space: nowrap;
@@ -440,7 +446,7 @@ button:focus-visible {
 
 .item-title[aria-expanded="true"] {
   color: var(--green-dark);
-  background: #fff8d9;
+  background: #dcebe4;
   font-weight: 700;
 }
 
