@@ -717,7 +717,7 @@ function createItemEditForm(item) {
   ];
   const controls = {};
   for (const [label, key, type] of fields) {
-    const field = formField(label, type, values[key], 240);
+    const field = formField(label, type, values[key], label === "內容" ? 2000 : 240);
     controls[key] = field.control;
     field.control.addEventListener("input", () => {
       state.itemEditDrafts.set(item.id, Object.fromEntries(
@@ -1000,74 +1000,26 @@ function formField(labelText, type, value, maxLength) {
   const control = document.createElement(type);
   control.maxLength = maxLength;
   control.value = value || "";
-  if (type === "textarea") control.rows = 4;
+  if (type === "textarea") {
+    control.rows = 3;
+    if (labelText === "內容") {
+      control.classList.add("auto-grow-content");
+      control.addEventListener("input", () => autoGrowContentTextarea(control));
+      requestAnimationFrame(() => autoGrowContentTextarea(control));
+    }
+  }
   wrapper.append(label, control);
   return { wrapper, control };
 }
 
-function wrapTextareaSelection(textarea, pair) {
-  const start = textarea.selectionStart ?? textarea.value.length;
-  const end = textarea.selectionEnd ?? start;
-  const selected = textarea.value.slice(start, end);
-  textarea.value = `${textarea.value.slice(0, start)}${pair[0]}${selected}${pair[1]}${textarea.value.slice(end)}`;
-  textarea.focus();
-  if (start === end) {
-    const cursor = start + pair[0].length;
-    textarea.setSelectionRange(cursor, cursor);
-  } else {
-    textarea.setSelectionRange(start + pair[0].length, end + pair[0].length);
-  }
-  textarea.dispatchEvent(new Event("input", { bubbles: true }));
-}
-
-function setupManualTextTools() {
-  const textarea = elements.manualForm.querySelector('textarea[name="issue"]');
-  if (!textarea) return;
-  for (const button of elements.manualForm.querySelectorAll("[data-text-tool]")) {
-    button.addEventListener("click", () => {
-      const tool = button.dataset.textTool || "";
-      if (tool === "clear") {
-        if (!textarea.value) return;
-        if (!window.confirm("清除目前輸入的內容？")) return;
-        textarea.value = "";
-        textarea.focus();
-        textarea.dispatchEvent(new Event("input", { bubbles: true }));
-        return;
-      }
-      if (tool.length === 2) wrapTextareaSelection(textarea, [tool[0], tool[1]]);
-    });
-  }
-}
-
-function setupManualTextareaResize() {
-  const zone = elements.manualForm.querySelector(".textarea-resize-zone");
-  const textarea = zone?.querySelector("textarea");
-  const handle = zone?.querySelector(".textarea-resize-handle");
-  if (!textarea || !handle) return;
-  let drag = null;
-  const minimumHeight = () => Math.max(84, parseFloat(getComputedStyle(textarea).minHeight) || 84);
-  handle.addEventListener("pointerdown", (event) => {
-    event.preventDefault();
-    handle.setPointerCapture?.(event.pointerId);
-    drag = { startY: event.clientY, startHeight: textarea.getBoundingClientRect().height };
-    handle.classList.add("is-dragging");
-  });
-  handle.addEventListener("pointermove", (event) => {
-    if (!drag) return;
-    const height = Math.max(minimumHeight(), drag.startHeight + event.clientY - drag.startY);
-    textarea.style.height = `${height}px`;
-  });
-  const stop = () => {
-    drag = null;
-    handle.classList.remove("is-dragging");
-  };
-  handle.addEventListener("pointerup", stop);
-  handle.addEventListener("pointercancel", stop);
-  handle.addEventListener("lostpointercapture", stop);
+function autoGrowContentTextarea(textarea) {
+  textarea.style.height = "auto";
+  textarea.style.height = `${Math.max(textarea.scrollHeight, 84)}px`;
 }
 
 function resetManualTextareaHeight() {
-  elements.manualForm.querySelector(".textarea-resize-zone textarea")?.style.removeProperty("height");
+  const textarea = elements.manualForm.querySelector('textarea[name="issue"]');
+  if (textarea) autoGrowContentTextarea(textarea);
 }
 
 function actionButton(text, disabled, handler, title = "", extraClass = "") {
@@ -1806,8 +1758,13 @@ function createResourceDetails(documentData) {
   return details;
 }
 
-setupManualTextTools();
-setupManualTextareaResize();
+
+const manualContentTextarea = elements.manualForm.querySelector('textarea[name="issue"]');
+if (manualContentTextarea) {
+  manualContentTextarea.classList.add("auto-grow-content");
+  manualContentTextarea.addEventListener("input", () => autoGrowContentTextarea(manualContentTextarea));
+  requestAnimationFrame(() => autoGrowContentTextarea(manualContentTextarea));
+}
 
 elements.manualToggle.addEventListener("click", () => setManualForm(elements.manualForm.hidden));
 elements.manualCancel.addEventListener("click", () => {

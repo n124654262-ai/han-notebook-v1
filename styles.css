@@ -261,6 +261,14 @@ textarea {
   overflow-wrap: anywhere;
 }
 
+.auto-grow-content {
+  min-height: 84px;
+  overflow: hidden;
+  resize: none;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+
 .text-tools {
   display: flex;
   flex-wrap: wrap;

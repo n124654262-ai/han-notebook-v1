@@ -1,6 +1,14 @@
 (() => {
   const form = document.querySelector("#submitForm");
   const status = document.querySelector("#submitStatus");
+  const content = form?.querySelector('textarea[name="subject"]');
+  const autoGrow = () => {
+    if (!content) return;
+    content.style.height = "auto";
+    content.style.height = `${Math.max(content.scrollHeight, 84)}px`;
+  };
+  content?.addEventListener("input", autoGrow);
+  autoGrow();
   const config = window.HAN_FIREBASE_CONFIG;
   if (!form || !config || !globalThis.firebase) return;
   const app = firebase.apps.length ? firebase.apps[0] : firebase.initializeApp(config);
