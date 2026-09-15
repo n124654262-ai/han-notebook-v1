@@ -44,9 +44,12 @@
 
     <main>
       <section id="manualEntry" class="manual-entry" aria-labelledby="manualToggle">
-        <button id="manualToggle" class="manual-toggle" type="button" aria-expanded="false">
-          ＋ 新增
-        </button>
+        <div class="manual-toggle-row">
+          <button id="manualToggle" class="manual-toggle" type="button" aria-expanded="false">
+            ＋ 新增
+          </button>
+          <p id="notice" class="notice" aria-live="polite" hidden></p>
+        </div>
         <form id="manualForm" class="manual-form" hidden>
           <label>
             <span>標題／事項</span>
@@ -85,8 +88,6 @@
           </div>
         </form>
       </section>
-
-      <p id="notice" class="notice" aria-live="polite" hidden></p>
 
       <section id="calendarPanel" class="calendar-panel" aria-labelledby="calendarHeading" hidden>
         <div class="calendar-toolbar">
