@@ -663,7 +663,17 @@ function createItemRow(item) {
   const title = document.createElement("button");
   title.type = "button";
   title.className = "item-title";
-  title.textContent = itemDisplayTitle(item);
+  const titleText = document.createElement("span");
+  titleText.className = "item-title-text";
+  titleText.textContent = itemDisplayTitle(item);
+  title.append(titleText);
+  const createdDate = formatCreatedShortDate(item.created_at);
+  if (createdDate) {
+    const created = document.createElement("span");
+    created.className = "item-created-date";
+    created.textContent = `　${createdDate}`;
+    title.append(created);
+  }
   title.setAttribute("aria-expanded", String(state.expandedIds.has(item.id)));
   title.addEventListener("click", () => {
     if (item.source_type === "external") markExternalItemViewed(item.id);
@@ -1185,6 +1195,11 @@ function calendarBlockForItem(itemId) {
 function formatCalendarShortDate(value) {
   const match = String(value || "").match(/^\d{4}-(\d{2})-(\d{2})$/);
   return match ? `${match[1]}/${match[2]}` : String(value || "");
+}
+
+function formatCreatedShortDate(value) {
+  const match = String(value || "").match(/^\d{4}-(\d{2})-(\d{2})/);
+  return match ? `${match[1]}/${match[2]}` : "";
 }
 
 function workdaysUntil(startDate) {

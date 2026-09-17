@@ -474,6 +474,11 @@ button:focus-visible {
   font-weight: 700;
 }
 
+.item-created-date {
+  color: #c33b32;
+  font-weight: 600;
+}
+
 .item-inline-edit {
   flex: 0 0 auto;
   min-height: 44px;
