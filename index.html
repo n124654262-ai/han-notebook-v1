@@ -1,145 +1,22 @@
 <!doctype html>
 <html lang="zh-Hant">
-  <head>
-    <meta charset="utf-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
-    <meta name="theme-color" content="#176b52">
-    <meta name="google-oauth-client-id" content="489249157768-6es2s0cf09e7144lrjp295eic7bva3gj.apps.googleusercontent.com">
-    <title>HAN 筆記本</title>
-    <link rel="stylesheet" href="styles.css?v=ui-0917-created-date-1">
-    <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-app-compat.js"></script>
-    <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-auth-compat.js"></script>
-    <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore-compat.js"></script>
-    <script src="https://accounts.google.com/gsi/client" async defer></script>
-    <script src="firebase-config.js"></script>
-    <script src="app.js?v=ui-0917-created-date-1" defer></script>
-  </head>
-  <body>
-    <div class="app-topbar">
-      <header class="app-header">
-        <div class="header-brand">
-          <h1>HAN 筆記本</h1>
-          <a id="gmailOpenButton" class="gmail-open-button" href="https://mail.google.com/mail/u/0/#inbox">公司 Gmail</a>
-        </div>
-        <div class="header-status">
-          <span id="syncState" class="sync-state" aria-live="polite">等待登入</span>
-          <a class="life-entry-button" href="life/">生活</a>
-        </div>
-      </header>
-
-      <nav class="main-tabs" aria-label="主要區域">
-        <button type="button" class="tab-button is-active" data-view="inbox" aria-current="page">
-          暫存區 <span id="inboxCount" class="tab-count">0</span>
-        </button>
-        <button type="button" class="tab-button" data-view="todo">
-          待辦 <span id="todoCount" class="tab-count">0</span>
-        </button>
-        <button type="button" class="tab-button" data-view="calendar">行事曆</button>
-        <button type="button" class="tab-button" data-view="archive">
-          封存 <span id="archiveCount" class="tab-count">0</span>
-        </button>
-        <button type="button" class="tab-button" data-view="resources">資源庫</button>
-      </nav>
-    </div>
-
-    <main>
-      <section id="manualEntry" class="manual-entry" aria-labelledby="manualToggle">
-        <div class="manual-toggle-row">
-          <button id="manualToggle" class="manual-toggle" type="button" aria-expanded="false">
-            ＋ 新增
-          </button>
-          <p id="notice" class="notice" aria-live="polite" hidden></p>
-        </div>
-        <form id="manualForm" class="manual-form" hidden>
-          <label>
-            <span>標題／事項</span>
-            <input name="object_name" type="text" maxlength="120" autocomplete="organization">
-          </label>
-          <div class="two-columns">
-            <label>
-              <span>聯絡人</span>
-              <input name="contact_name" type="text" maxlength="120" autocomplete="name">
-            </label>
-            <label>
-              <span>電話</span>
-              <input name="phone" type="tel" maxlength="80" autocomplete="tel" inputmode="tel">
-            </label>
-          </div>
-          <div class="manual-content-field">
-            <label for="manualIssue">
-              <span>內容</span>
-            </label>
-            <div class="textarea-resize-zone">
-              <textarea id="manualIssue" name="issue" rows="3" maxlength="2000" wrap="soft"></textarea>
-            </div>
-          </div>
-          <label>
-            <span>相關資料在哪裡</span>
-            <input name="resource_location" type="text" maxlength="240" list="resourceOptions">
-            <datalist id="resourceOptions">
-              <option value="LINE"></option>
-              <option value="Email"></option>
-              <option value="其他"></option>
-            </datalist>
-          </label>
-          <div class="form-actions">
-            <button type="button" id="manualCancel" class="secondary-button">取消</button>
-            <button type="submit" class="primary-button">存入暫存區</button>
-          </div>
-        </form>
-      </section>
-
-      <section id="calendarPanel" class="calendar-panel" aria-labelledby="calendarHeading" hidden>
-        <div class="calendar-toolbar">
-          <button id="calendarPrevious" class="calendar-nav" type="button" aria-label="上一個月">‹</button>
-          <h2 id="calendarHeading"></h2>
-          <button id="calendarNext" class="calendar-nav" type="button" aria-label="下一個月">›</button>
-        </div>
-        <form id="calendarQuickForm" class="calendar-quick-form">
-          <label>
-            <input name="title" type="text" maxlength="240" aria-label="新增行事曆想法" placeholder="例如：新光｜報價">
-          </label>
-          <div class="form-actions">
-            <button type="submit" class="primary-button">新增並安排</button>
-          </div>
-        </form>
-        <div id="calendarSelection" class="calendar-selection" hidden>
-          <span id="calendarSelectionText"></span>
-          <div id="calendarDateEdit" class="calendar-date-edit" hidden>
-            <label>
-              <span>開始日</span>
-              <input id="calendarEditStart" type="date">
-            </label>
-            <label>
-              <span>結束日</span>
-              <input id="calendarEditEnd" type="date">
-            </label>
-            <button id="calendarSaveDates" class="primary-button" type="button">儲存日期</button>
-          </div>
-          <span class="calendar-selection-actions">
-            <button id="calendarClearSelection" class="text-button" type="button">清除選取</button>
-            <button id="calendarDeleteBlock" class="text-button danger-text" type="button" hidden>刪除時間條</button>
-          </span>
-        </div>
-        <div id="calendarGrid" class="calendar-grid" role="grid" aria-label="行事曆日期"></div>
-      </section>
-
-      <section id="resourcesPanel" class="resources-panel" aria-labelledby="resourcesHeading" hidden>
-        <h2 id="resourcesHeading">資源庫</h2>
-        <label class="resource-search">
-          <span>搜尋正式文件</span>
-          <input id="resourceSearch" type="search" maxlength="100" placeholder="輸入文件名稱或日期">
-        </label>
-        <ul id="resourceList" class="resource-list"></ul>
-        <p id="resourceEmpty" class="empty-state" hidden>目前沒有正式文件</p>
-      </section>
-
-      <section class="list-section" aria-labelledby="listHeading">
-        <h2 id="listHeading">暫存區</h2>
-        <ul id="itemList" class="item-list"></ul>
-        <p id="emptyState" class="empty-state" hidden>目前沒有資料</p>
-      </section>
-    </main>
-
-  </body>
+<head>
+  <meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>生活雜事</title><link rel="stylesheet" href="life.css?v=life-0924-sync-1">
+  <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-app-compat.js"></script>
+  <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-auth-compat.js"></script>
+  <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore-compat.js"></script>
+  <script src="../firebase-config.js?v=life-0924-sync-1"></script>
+</head>
+<body><main class="life-page">
+  <a class="back-link" href="../">← 返回 HAN 筆記本</a>
+  <h1>生活雜事</h1>
+  <form id="lifeForm" class="life-entry" autocomplete="off">
+    <button id="voiceButton" class="voice-button" type="button">🎤 語音</button>
+    <input id="lifeInput" name="text" type="text" maxlength="240" placeholder="輸入生活雜事……" autocomplete="off">
+    <button class="add-button" type="submit">新增</button>
+  </form>
+  <p id="lifeStatus" class="life-status" role="status" aria-live="polite"></p>
+  <ul id="lifeList" class="life-list"></ul><p id="lifeEmpty" class="life-empty">目前沒有生活雜事</p>
+</main><script src="life.js?v=life-0924-sync-1" defer></script></body>
 </html>
