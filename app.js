@@ -85,64 +85,6 @@ const elements = {
 const saveTimers = new Map();
 const savePromises = new Map();
 const VIEWED_EXTERNAL_ITEMS_KEY = "han-notebook-viewed-external-items";
-const GMAIL_ACCOUNT = "han@jenfu.com.tw";
-const GMAIL_SCOPE = "https://www.googleapis.com/auth/gmail.readonly";
-let gmailTokenClient = null;
-let gmailRefreshTimer = null;
-
-function gmailClientId() {
-  return document.querySelector('meta[name="google-oauth-client-id"]')?.content || "";
-}
-
-function setGmailNewCount(count) {
-  const badge = document.querySelector("#gmailNewCount");
-  if (!badge) return;
-  const safeCount = Number.isFinite(count) ? Math.max(0, count) : 0;
-  badge.hidden = safeCount === 0;
-  badge.textContent = safeCount > 99 ? "99+" : String(safeCount);
-}
-
-async function refreshGmailNewCount() {
-  if (!gmailTokenClient || !gmailClientId()) return;
-  try {
-    const token = await new Promise((resolve, reject) => {
-      gmailTokenClient.callback = (response) => {
-        if (response?.error) reject(new Error(response.error));
-        else resolve(response.access_token);
-      };
-      // 空白 prompt 只嘗試既有授權；尚未授權時不自動跳出視窗。
-      gmailTokenClient.requestAccessToken({ prompt: "" });
-    });
-    const query = encodeURIComponent("in:inbox is:unread newer_than:3d");
-    const response = await fetch(`https://gmail.googleapis.com/gmail/v1/users/${encodeURIComponent(GMAIL_ACCOUNT)}/messages?maxResults=500&q=${query}`, {
-      headers: { Authorization: `Bearer ${token}` },
-    });
-    if (!response.ok) throw new Error(`Gmail ${response.status}`);
-    const data = await response.json();
-    setGmailNewCount(Array.isArray(data.messages) ? data.messages.length : 0);
-  } catch (_error) {
-    // 未完成一次性 Gmail 唯讀授權時保持不顯示數字，不影響原本開信按鈕。
-    setGmailNewCount(0);
-  }
-}
-
-function initializeGmailNewCount() {
-  const clientId = gmailClientId();
-  if (!clientId || !globalThis.google?.accounts?.oauth2) return;
-  gmailTokenClient = google.accounts.oauth2.initTokenClient({
-    client_id: clientId,
-    scope: GMAIL_SCOPE,
-    callback: () => {},
-  });
-  void refreshGmailNewCount();
-  if (gmailRefreshTimer) clearInterval(gmailRefreshTimer);
-  gmailRefreshTimer = setInterval(() => { void refreshGmailNewCount(); }, 60 * 60 * 1000);
-}
-
-window.addEventListener("load", () => {
-  if (globalThis.google?.accounts?.oauth2) initializeGmailNewCount();
-  else setTimeout(initializeGmailNewCount, 1200);
-});
 
 function viewedExternalItemIds() {
   try {

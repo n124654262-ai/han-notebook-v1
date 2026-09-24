@@ -102,23 +102,6 @@ button {
   text-decoration: none;
 }
 
-.gmail-new-count {
-  display: inline-flex;
-  min-width: 1.2em;
-  height: 1.2em;
-  align-items: center;
-  justify-content: center;
-  margin-left: 0.35rem;
-  padding: 0 0.28rem;
-  border-radius: 999px;
-  background: #c62828;
-  color: #fff;
-  font-size: 0.78em;
-  font-weight: 700;
-  line-height: 1;
-  vertical-align: 0.08em;
-}
-
 .life-entry-button { display:inline-flex; align-items:center; justify-content:center; min-height:34px; max-width:210px; padding:5px 9px; border:1px solid var(--green); border-radius:5px; color:var(--green-dark); text-decoration:none; background:#ffffff; font-size:13px; white-space:nowrap; }
 .life-entry-button:hover, .life-entry-button:focus-visible { background:#cde9df; }
 
