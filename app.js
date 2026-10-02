@@ -144,11 +144,18 @@ function itemDisplayTitle(item) {
   return fallback || "未命名事項";
 }
 
+function sortItems(items) {
+  return [...items].sort((a, b) => {
+    const pinnedOrder = Number(Boolean(b.is_pinned)) - Number(Boolean(a.is_pinned));
+    if (pinnedOrder !== 0) return pinnedOrder;
+    return String(b.created_at).localeCompare(String(a.created_at));
+  });
+}
+
 function remoteItemList(view) {
   const flag = view === "todo" ? "in_todo" : view === "archive" ? "in_archive" : "in_inbox";
-  return remote.items
-    .filter((item) => Boolean(item[flag]) && (view === "archive" || !item.in_archive))
-    .sort((a, b) => String(b.created_at).localeCompare(String(a.created_at)));
+  return sortItems(remote.items
+    .filter((item) => Boolean(item[flag]) && (view === "archive" || !item.in_archive)));
 }
 
 function remoteRefreshCalendar() {
@@ -235,7 +242,7 @@ function attachRemoteListeners() {
           contact_name: submission.contact_name || "", phone: submission.phone || "",
           original_message: "員工公開留言", resource_location: submission.resource_location || "",
           my_notes: submission.requested_action ? `需要我做什麼：${submission.requested_action}` : "",
-          source_type: "external", in_inbox: true, in_todo: false, in_archive: false,
+          source_type: "external", is_pinned: false, in_inbox: true, in_todo: false, in_archive: false,
           note_revision: 0, created_at: submission.created_at || remoteNow(), updated_at: remoteNow(),
         };
         const itemRef = remoteCollection("items").doc(item.id);
@@ -277,6 +284,7 @@ async function remoteApi(path, options = {}) {
         resource_location: String(body.resource_location || "").trim(),
         my_notes: String(body.my_notes || ""),
         source_type: body.source_type === "line" ? "line" : "manual",
+        is_pinned: false,
         in_inbox: true,
         in_todo: false,
         note_revision: 0,
@@ -313,6 +321,9 @@ async function remoteApi(path, options = {}) {
       phone: String(body.phone || "").trim(),
       original_message: String(body.original_message || "").trim(),
       resource_location: String(body.resource_location || "").trim(),
+      ...(Object.prototype.hasOwnProperty.call(body, "is_pinned")
+        ? { is_pinned: Boolean(body.is_pinned) }
+        : {}),
       updated_at: now,
     };
     await itemRef.update(updated);
@@ -586,7 +597,7 @@ function render() {
 function renderList() {
   elements.listHeading.textContent = state.view === "inbox" ? "暫存區" : state.view === "todo" ? "待辦" : "封存區";
   elements.itemList.replaceChildren();
-  const items = activeItems();
+  const items = sortItems(activeItems());
   elements.emptyState.hidden = items.length !== 0;
   if (state.view === "archive") {
     const visibleIds = new Set(items.map((item) => item.id));
@@ -667,6 +678,13 @@ function createItemRow(item) {
   titleText.className = "item-title-text";
   titleText.textContent = itemDisplayTitle(item);
   title.append(titleText);
+  if (item.is_pinned) {
+    const pinned = document.createElement("span");
+    pinned.className = "item-pinned-mark";
+    pinned.textContent = "釘選";
+    pinned.title = "已釘選，會固定在清單上方";
+    title.append(pinned);
+  }
   const createdDate = formatCreatedShortDate(item.created_at);
   if (createdDate) {
     const created = document.createElement("span");
@@ -699,6 +717,15 @@ function createItemRow(item) {
     titleRow.append(schedule);
   }
   if (state.expandedIds.has(item.id) && !editing) {
+    const pin = document.createElement("button");
+    pin.type = "button";
+    pin.className = "item-pin-button";
+    pin.textContent = item.is_pinned ? "取消釘選" : "釘選";
+    pin.setAttribute("aria-label", item.is_pinned ? `取消釘選 ${itemDisplayTitle(item)}` : `釘選 ${itemDisplayTitle(item)}`);
+    pin.addEventListener("click", (event) => {
+      event.stopPropagation();
+      void togglePinnedItem(item);
+    });
     const edit = document.createElement("button");
     edit.type = "button";
     edit.className = "item-inline-edit";
@@ -707,7 +734,7 @@ function createItemRow(item) {
       state.editingId = item.id;
       render();
     });
-    titleRow.append(edit);
+    titleRow.append(pin, edit);
   } else if (editing) {
     const indicator = document.createElement("span");
     indicator.className = "item-editing-indicator";
@@ -720,7 +747,7 @@ function createItemRow(item) {
 }
 
 function replaceItem(updated) {
-  const replace = (items) => items.map((item) => item.id === updated.id ? { ...item, ...updated } : item);
+  const replace = (items) => sortItems(items.map((item) => item.id === updated.id ? { ...item, ...updated } : item));
   state.inboxItems = replace(state.inboxItems);
   state.todoItems = replace(state.todoItems);
   state.archiveItems = replace(state.archiveItems);
@@ -1192,6 +1219,29 @@ function calendarBlockForItem(itemId) {
   return blocks.find((block) => block.item_id === itemId && block.start_date && block.end_date) || null;
 }
 
+async function togglePinnedItem(item) {
+  const pinned = !Boolean(item.is_pinned);
+  try {
+    const data = await api(`/api/items/${item.id}`, {
+      method: "PATCH",
+      body: JSON.stringify({
+        object_name: item.object_name || "",
+        subject: item.subject || "",
+        contact_name: item.contact_name || "",
+        phone: item.phone || "",
+        original_message: item.original_message || "",
+        resource_location: item.resource_location || "",
+        is_pinned: pinned,
+      }),
+    });
+    replaceItem(data.item);
+    showNotice(pinned ? "已釘選，事項移到最上方" : "已取消釘選");
+    render();
+  } catch (error) {
+    showNotice(`釘選失敗：${error.message}`, true);
+  }
+}
+
 function formatCalendarShortDate(value) {
   const match = String(value || "").match(/^\d{4}-(\d{2})-(\d{2})$/);
   return match ? `${match[1]}/${match[2]}` : String(value || "");
@@ -1299,7 +1349,7 @@ function rememberCreatedItem(item) {
     state.todoItems = remoteItemList("todo");
     return;
   }
-  state.inboxItems = [item, ...state.inboxItems.filter((candidate) => candidate.id !== item.id)];
+  state.inboxItems = sortItems([item, ...state.inboxItems.filter((candidate) => candidate.id !== item.id)]);
 }
 
 async function createQuickCalendarIdea(event) {

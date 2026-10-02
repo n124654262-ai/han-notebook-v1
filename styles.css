@@ -490,6 +490,27 @@ button:focus-visible {
   cursor: pointer;
 }
 
+.item-pin-button {
+  flex: 0 0 auto;
+  min-height: 44px;
+  padding: 8px 10px;
+  border: 0;
+  border-left: 1px solid #c7d9d0;
+  color: #7a4a14;
+  background: #fff4cc;
+  cursor: pointer;
+}
+
+.item-pinned-mark {
+  flex: 0 0 auto;
+  align-self: center;
+  margin-left: 6px;
+  color: #7a4a14;
+  font-size: 12px;
+  font-weight: 700;
+  white-space: nowrap;
+}
+
 .item-calendar-meta {
   flex: 0 0 auto;
   display: inline-flex;
