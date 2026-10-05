@@ -270,10 +270,17 @@ textarea {
 
 .auto-grow-content {
   min-height: 84px;
+  max-height: min(60vh, 560px);
   overflow: hidden;
   resize: none;
   white-space: pre-wrap;
   overflow-wrap: anywhere;
+}
+
+.item-edit-form .auto-grow-content {
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  overflow-anchor: none;
 }
 
 .text-tools {
@@ -475,8 +482,13 @@ button:focus-visible {
 }
 
 .item-created-date {
+  flex: 0 0 auto;
+  align-self: center;
+  margin-left: auto;
+  padding: 0 14px 0 8px;
   color: #c33b32;
   font-weight: 600;
+  white-space: nowrap;
 }
 
 .item-inline-edit {
@@ -501,13 +513,13 @@ button:focus-visible {
   cursor: pointer;
 }
 
-.item-pinned-mark {
+.item-pinned-dot {
   flex: 0 0 auto;
   align-self: center;
-  margin-left: 6px;
-  color: #7a4a14;
-  font-size: 12px;
-  font-weight: 700;
+  margin-right: 6px;
+  color: #c62828;
+  font-size: 14px;
+  line-height: 1;
   white-space: nowrap;
 }
 

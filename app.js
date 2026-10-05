@@ -449,7 +449,9 @@ if (elements.authButton) elements.authButton.addEventListener("click", async () 
       return;
     }
     try {
-      await remote.auth.signInWithPopup(new firebase.auth.GoogleAuthProvider());
+      const provider = new firebase.auth.GoogleAuthProvider();
+      provider.setCustomParameters({ login_hint: "han@jenfu.com.tw" });
+      await remote.auth.signInWithPopup(provider);
     } catch (error) {
       if (error.code === "auth/popup-blocked" || error.code === "auth/popup-closed-by-user") {
         showNotice("登入視窗被瀏覽器擋住，請允許彈出視窗後再按一次登入。", true);
@@ -458,7 +460,11 @@ if (elements.authButton) elements.authButton.addEventListener("click", async () 
   });
   remote.auth.onAuthStateChanged((user) => {
     remote.user = user;
-    if (elements.authButton) elements.authButton.textContent = user ? `登出 ${user.email || "Google 帳號"}` : "使用 Google 帳號登入";
+    if (elements.authButton) {
+      elements.authButton.hidden = Boolean(user);
+      elements.authButton.textContent = "使用公司 Google 登入";
+    }
+    if (elements.syncState) elements.syncState.hidden = !user;
     if (!user) {
       for (const unsubscribe of remote.unsubscribers) unsubscribe();
       remote.unsubscribers = [];
@@ -680,18 +686,12 @@ function createItemRow(item) {
   title.append(titleText);
   if (item.is_pinned) {
     const pinned = document.createElement("span");
-    pinned.className = "item-pinned-mark";
-    pinned.textContent = "釘選";
+    pinned.className = "item-pinned-dot";
+    pinned.textContent = "●";
     pinned.title = "已釘選，會固定在清單上方";
-    title.append(pinned);
+    title.prepend(pinned);
   }
   const createdDate = formatCreatedShortDate(item.created_at);
-  if (createdDate) {
-    const created = document.createElement("span");
-    created.className = "item-created-date";
-    created.textContent = `　${createdDate}`;
-    title.append(created);
-  }
   title.setAttribute("aria-expanded", String(state.expandedIds.has(item.id)));
   title.addEventListener("click", () => {
     if (item.source_type === "external") markExternalItemViewed(item.id);
@@ -702,6 +702,12 @@ function createItemRow(item) {
     render();
   });
   titleRow.append(title);
+  if (createdDate) {
+    const created = document.createElement("span");
+    created.className = "item-created-date";
+    created.textContent = createdDate;
+    titleRow.append(created);
+  }
   const calendarBlock = calendarBlockForItem(item.id);
   if (calendarBlock) {
     const schedule = document.createElement("span");
@@ -1073,8 +1079,14 @@ function formField(labelText, type, value, maxLength) {
 }
 
 function autoGrowContentTextarea(textarea) {
+  const previousScrollTop = textarea.scrollTop;
+  const wasAtBottom = textarea.scrollTop + textarea.clientHeight >= textarea.scrollHeight - 4;
   textarea.style.height = "auto";
-  textarea.style.height = `${Math.max(textarea.scrollHeight, 84)}px`;
+  const maxHeight = Math.max(240, Math.min(560, Math.floor(window.innerHeight * 0.6)));
+  const nextHeight = Math.min(Math.max(textarea.scrollHeight, 84), maxHeight);
+  textarea.style.height = `${nextHeight}px`;
+  if (wasAtBottom) textarea.scrollTop = textarea.scrollHeight;
+  else textarea.scrollTop = previousScrollTop;
 }
 
 function resetManualTextareaHeight() {
