@@ -16,7 +16,7 @@ const FIREBASE_CONFIG = globalThis.HAN_FIREBASE_CONFIG || {
   messagingSenderId: "341013315221",
   appId: "1:341013315221:web:c7a7141d6bec9ff2e7259c",
 };
-const AUTHORIZED_EMAIL = "han@jenfu.com.tw";
+const AUTHORIZED_EMAIL = "n124654262@gmail.com";
 
 const state = {
   view: "inbox",
@@ -231,7 +231,7 @@ function attachRemoteListeners() {
   }, (error) => {
     setConnection(false, "同步中斷，稍後重試");
     showNotice(error.code === "permission-denied"
-      ? "資料同步失敗：請使用公司 Google 帳號登入。"
+      ? `資料同步失敗：請使用 ${AUTHORIZED_EMAIL} 登入。`
       : `資料同步失敗：${error.message || "請稍後再試"}`, true);
   }));
   // 員工公開留言：由負責人登入的瀏覽器匯入自己的暫存區。
@@ -455,7 +455,7 @@ if (elements.authButton) elements.authButton.addEventListener("click", async () 
       return;
     }
     const provider = new firebase.auth.GoogleAuthProvider();
-    provider.setCustomParameters({ login_hint: "han@jenfu.com.tw" });
+    provider.setCustomParameters({ login_hint: AUTHORIZED_EMAIL });
     try {
       await remote.auth.signInWithPopup(provider);
     } catch (error) {
@@ -473,13 +473,13 @@ if (elements.authButton) elements.authButton.addEventListener("click", async () 
   remote.auth.onAuthStateChanged((user) => {
     if (user && String(user.email || "").toLowerCase() !== AUTHORIZED_EMAIL) {
       void remote.auth.signOut();
-      showNotice(`請使用公司 Google 帳號 ${AUTHORIZED_EMAIL} 登入。`, true);
+      showNotice(`請使用 Google 帳號 ${AUTHORIZED_EMAIL} 登入。`, true);
       return;
     }
     remote.user = user;
     if (elements.authButton) {
       elements.authButton.hidden = Boolean(user);
-      elements.authButton.textContent = "使用公司 Google 登入";
+      elements.authButton.textContent = "n124登入";
     }
     if (elements.syncState) elements.syncState.hidden = !user;
     if (!user) {
