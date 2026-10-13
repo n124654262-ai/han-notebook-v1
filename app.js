@@ -156,6 +156,15 @@ function calendarItemId(block) {
   return block?.item_id ?? block?.itemId ?? block?.itemID ?? block?.item_ref ?? block?.item ?? "";
 }
 
+function calendarItemForBlock(block) {
+  const itemId = calendarItemId(block);
+  const direct = remote.items.find((candidate) => normalizedRemoteId(candidate.id) === normalizedRemoteId(itemId));
+  if (direct) return direct;
+  const dateMatches = remote.items.filter((candidate) =>
+    formatCreatedShortDate(candidate.created_at) === formatCalendarShortDate(block?.start_date));
+  return dateMatches.length === 1 ? dateMatches[0] : null;
+}
+
 function sortItems(items) {
   return [...items].sort((a, b) => {
     const pinnedOrder = Number(Boolean(b.is_pinned)) - Number(Boolean(a.is_pinned));
@@ -179,7 +188,7 @@ function remoteRefreshCalendar() {
   state.calendar.blocks = remote.blocks
     .filter((block) => block.end_date >= first && block.start_date <= last)
     .map((block) => {
-      const item = remote.items.find((candidate) => normalizedRemoteId(candidate.id) === normalizedRemoteId(calendarItemId(block)));
+      const item = calendarItemForBlock(block);
       return {
         ...block,
         item_id: calendarItemId(block),
@@ -1337,7 +1346,8 @@ function openSelectedCalendarItem() {
   const block = state.calendar.blocks.find((candidate) => candidate.id === state.calendar.selectedBlockId);
   if (!block) return;
   const itemId = calendarItemId(block);
-  const item = itemById(itemId)
+  const item = calendarItemForBlock(block)
+    || itemById(itemId)
     || state.calendar.availableItems.find((candidate) => normalizedRemoteId(candidate.id) === normalizedRemoteId(itemId));
   if (!item) {
     showNotice("找不到原本的事項", true);
@@ -1625,7 +1635,8 @@ function calendarColorIndex(block) {
 
 function calendarBlockTitle(block) {
   const itemId = calendarItemId(block);
-  const item = itemById(itemId)
+  const item = calendarItemForBlock(block)
+    || itemById(itemId)
     || state.calendar.availableItems.find((candidate) => normalizedRemoteId(candidate.id) === normalizedRemoteId(itemId));
   const blockFields = [block.object_name, block.subject, block.item_name, block.name, block.label]
     .map((value) => String(value || "").trim()).filter(Boolean);
