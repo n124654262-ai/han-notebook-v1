@@ -1627,8 +1627,10 @@ function calendarBlockTitle(block) {
   const itemId = calendarItemId(block);
   const item = itemById(itemId)
     || state.calendar.availableItems.find((candidate) => normalizedRemoteId(candidate.id) === normalizedRemoteId(itemId));
+  const blockFields = [block.object_name, block.subject, block.item_name, block.name, block.label]
+    .map((value) => String(value || "").trim()).filter(Boolean);
   return block.title
-    || (item ? `${item.object_name}｜${item.subject}` : "未命名");
+    || (item ? `${item.object_name}｜${item.subject}` : blockFields.join("｜") || "未命名");
 }
 
 function appendCalendarBar(row, block, weekStart, preview) {
@@ -1641,10 +1643,6 @@ function appendCalendarBar(row, block, weekStart, preview) {
   bar.className = `calendar-block calendar-color-${calendarColorIndex(block)}${preview ? " is-preview" : ""}`;
   bar.dataset.blockId = block.id;
   bar.dataset.itemId = normalizedRemoteId(calendarItemId(block));
-  bar.dataset.debugBlock = Object.entries(block)
-    .filter(([, value]) => value === null || ["string", "number", "boolean"].includes(typeof value))
-    .map(([key, value]) => `${key}=${value}`)
-    .join("|");
   bar.style.left = `${(startOffset / 7) * 100}%`;
   bar.style.width = `${(dayCount / 7) * 100}%`;
   const lane = calendarLane(row, block);
