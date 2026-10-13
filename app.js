@@ -1640,6 +1640,7 @@ function appendCalendarBar(row, block, weekStart, preview) {
   bar.type = "button";
   bar.className = `calendar-block calendar-color-${calendarColorIndex(block)}${preview ? " is-preview" : ""}`;
   bar.dataset.blockId = block.id;
+  bar.dataset.itemId = normalizedRemoteId(calendarItemId(block));
   bar.style.left = `${(startOffset / 7) * 100}%`;
   bar.style.width = `${(dayCount / 7) * 100}%`;
   const lane = calendarLane(row, block);
