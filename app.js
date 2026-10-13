@@ -134,8 +134,8 @@ function remoteId() {
   return `${Date.now()}-${Math.random().toString(16).slice(2)}`;
 }
 
-function remoteDoc(data) {
-  return { id: data.id, ...data };
+function remoteDoc(data, documentId = "") {
+  return { ...data, id: data.id || documentId };
 }
 
 function itemDisplayTitle(item) {
@@ -218,7 +218,7 @@ function attachRemoteListeners() {
   remote.unsubscribers = [];
   remote.unsubscribers.push(remoteCollection("items").onSnapshot((snapshot) => {
     remote.items = snapshot.docs.map((doc) => {
-      const item = remoteDoc(doc.data());
+      const item = remoteDoc(doc.data(), doc.id);
       publicSubmissionForItem(item);
       return item;
     });
@@ -258,12 +258,12 @@ function attachRemoteListeners() {
       });
     }, () => {}));
   remote.unsubscribers.push(remoteCollection("calendar_blocks").onSnapshot((snapshot) => {
-    remote.blocks = snapshot.docs.map((doc) => remoteDoc(doc.data()));
+    remote.blocks = snapshot.docs.map((doc) => remoteDoc(doc.data(), doc.id));
     remoteRefreshCalendar();
     render();
   }, () => setConnection(false, "同步中斷，稍後重試")));
   remote.unsubscribers.push(remoteCollection("documents").onSnapshot((snapshot) => {
-    remote.documents = snapshot.docs.map((doc) => remoteDoc(doc.data()));
+    remote.documents = snapshot.docs.map((doc) => remoteDoc(doc.data(), doc.id));
     remoteRefreshDocuments();
     if (state.view === "resources") render();
   }, () => setConnection(false, "同步中斷，稍後重試")));
