@@ -283,6 +283,12 @@ textarea {
   overflow-anchor: none;
 }
 
+.resource-edit-form .auto-grow-content {
+  max-height: none;
+  overflow-y: hidden;
+  overflow-anchor: none;
+}
+
 .text-tools {
   display: flex;
   flex-wrap: wrap;
@@ -881,8 +887,8 @@ button:focus-visible {
 .calendar-selection {
   display: flex;
   align-items: center;
-  justify-content: space-between;
-  gap: 8px;
+  flex-wrap: wrap;
+  gap: 12px;
   min-height: 38px;
   padding: 7px 14px;
   border-top: 1px solid #dbe7e1;
@@ -892,19 +898,42 @@ button:focus-visible {
   font-size: 14px;
 }
 
+.calendar-selection-text {
+  display: inline-flex;
+  min-width: 0;
+  align-items: center;
+  gap: 8px;
+  white-space: nowrap;
+}
+
+.calendar-selection-title {
+  overflow: hidden;
+  color: #075f50;
+  font-weight: 750;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.calendar-selection-date {
+  color: #a52a2a;
+  font-weight: 700;
+  white-space: nowrap;
+}
+
 .calendar-selection-actions {
   display: flex;
   flex-shrink: 0;
-  gap: 10px;
+  gap: 12px;
   align-items: center;
+  margin-left: auto;
 }
 
 .calendar-date-edit {
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 180px)) auto;
   align-items: end;
-  flex: 1 1 100%;
-  gap: 6px;
+  flex: 0 1 auto;
+  gap: 12px;
 }
 
 .calendar-date-edit[hidden] {
@@ -935,8 +964,10 @@ button:focus-visible {
 }
 
 .text-button {
-  padding: 4px 0;
-  border: 0;
+  min-height: 32px;
+  padding: 5px 10px;
+  border: 1px solid #b8c9c0;
+  border-radius: 4px;
   color: var(--green-dark);
   background: transparent;
   cursor: pointer;
@@ -1094,13 +1125,13 @@ button:focus-visible {
   position: absolute;
   z-index: 2;
   display: block;
-  height: 8px;
+  height: 18px;
   overflow: visible;
   padding: 0 14px;
-  border: 0;
-  border-radius: 0;
+  border: 1px solid rgb(23 33 29 / 22%);
+  border-radius: 3px;
   color: #17211d;
-  background: linear-gradient(var(--calendar-bar-color, #8fc5ab), var(--calendar-bar-color, #8fc5ab)) center / 100% 4px no-repeat;
+  background: var(--calendar-bar-color, #8fc5ab);
   font-size: 11px;
   font-weight: 600;
   line-height: 1;
@@ -1112,14 +1143,16 @@ button:focus-visible {
 
 .calendar-block-label {
   position: absolute;
-  top: 50%;
+  top: 0;
+  bottom: 0;
   right: 14px;
   left: 14px;
+  display: flex;
   overflow: hidden;
   color: #17211d;
+  align-items: center;
   line-height: 14px;
   text-overflow: ellipsis;
-  transform: translateY(-50%);
   pointer-events: none;
 }
 
@@ -1163,9 +1196,9 @@ button:focus-visible {
 }
 
 .calendar-block.is-preview {
-  border: 0;
+  border-color: rgb(23 33 29 / 16%);
   color: #17211d;
-  background: linear-gradient(var(--calendar-bar-color, #b8ddca), var(--calendar-bar-color, #b8ddca)) center / 100% 4px no-repeat;
+  background: var(--calendar-bar-color, #b8ddca);
   opacity: 0.78;
   pointer-events: none;
 }
@@ -1549,10 +1582,6 @@ button:focus-visible {
     display: none;
   }
 
-  .calendar-selection {
-    display: none !important;
-  }
-
   .calendar-date-edit {
     display: none !important;
   }
@@ -1598,3 +1627,4 @@ button:focus-visible {
     border-left: 1px solid var(--line);
   }
 }
+

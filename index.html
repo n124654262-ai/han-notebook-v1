@@ -6,13 +6,13 @@
     <meta name="theme-color" content="#176b52">
     <meta name="google-oauth-client-id" content="489249157768-6es2s0cf09e7144lrjp295eic7bva3gj.apps.googleusercontent.com">
     <title>HAN 筆記本</title>
-    <link rel="stylesheet" href="styles.css?v=auth-personal-20261006">
+    <link rel="stylesheet" href="styles.css?v=resource-content-20261013">
     <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-app-compat.js"></script>
     <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-auth-compat.js"></script>
     <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore-compat.js"></script>
     <script src="https://accounts.google.com/gsi/client" async defer></script>
     <script src="firebase-config.js"></script>
-    <script src="app.js?v=auth-personal-20261006" defer></script>
+    <script src="app.js?v=resource-content-20261013" defer></script>
   </head>
   <body>
     <div class="app-topbar">
@@ -105,7 +105,7 @@
           </div>
         </form>
         <div id="calendarSelection" class="calendar-selection" hidden>
-          <span id="calendarSelectionText"></span>
+          <span id="calendarSelectionText" class="calendar-selection-text"></span>
           <div id="calendarDateEdit" class="calendar-date-edit" hidden>
             <label>
               <span>開始日</span>
@@ -115,11 +115,11 @@
               <span>結束日</span>
               <input id="calendarEditEnd" type="date">
             </label>
-            <button id="calendarSaveDates" class="primary-button" type="button">儲存日期</button>
+            <button id="calendarSaveDates" class="primary-button" type="button">儲存</button>
           </div>
           <span class="calendar-selection-actions">
-            <button id="calendarClearSelection" class="text-button" type="button">清除選取</button>
-            <button id="calendarDeleteBlock" class="text-button danger-text" type="button" hidden>刪除時間條</button>
+            <button id="calendarOpenItem" class="text-button" type="button" hidden>開啟</button>
+            <button id="calendarDeleteBlock" class="text-button danger-text" type="button" hidden>刪除</button>
           </span>
         </div>
         <div id="calendarGrid" class="calendar-grid" role="grid" aria-label="行事曆日期"></div>
@@ -144,3 +144,4 @@
 
   </body>
 </html>
+

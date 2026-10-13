@@ -74,7 +74,7 @@ const elements = {
   calendarEditStart: document.querySelector("#calendarEditStart"),
   calendarEditEnd: document.querySelector("#calendarEditEnd"),
   calendarSaveDates: document.querySelector("#calendarSaveDates"),
-  calendarClearSelection: document.querySelector("#calendarClearSelection"),
+  calendarOpenItem: document.querySelector("#calendarOpenItem"),
   calendarDeleteBlock: document.querySelector("#calendarDeleteBlock"),
   calendarGrid: document.querySelector("#calendarGrid"),
   resourcesPanel: document.querySelector("#resourcesPanel"),
@@ -1085,7 +1085,7 @@ function formField(labelText, type, value, maxLength) {
   control.value = value || "";
   if (type === "textarea") {
     control.rows = 3;
-    if (labelText === "內容") {
+    if (labelText === "內容" || labelText === "正式內容") {
       control.classList.add("auto-grow-content");
       control.addEventListener("input", () => autoGrowContentTextarea(control));
       requestAnimationFrame(() => autoGrowContentTextarea(control));
@@ -1099,7 +1099,10 @@ function autoGrowContentTextarea(textarea) {
   const previousScrollTop = textarea.scrollTop;
   const wasAtBottom = textarea.scrollTop + textarea.clientHeight >= textarea.scrollHeight - 4;
   textarea.style.height = "auto";
-  const maxHeight = Math.max(240, Math.min(560, Math.floor(window.innerHeight * 0.6)));
+  const isResourceContent = Boolean(textarea.closest(".resource-edit-form"));
+  const maxHeight = isResourceContent
+    ? Number.POSITIVE_INFINITY
+    : Math.max(240, Math.min(560, Math.floor(window.innerHeight * 0.6)));
   const nextHeight = Math.min(Math.max(textarea.scrollHeight, 84), maxHeight);
   textarea.style.height = `${nextHeight}px`;
   if (wasAtBottom) textarea.scrollTop = textarea.scrollHeight;
@@ -1305,15 +1308,34 @@ async function deleteSelectedCalendarBlock() {
   if (isSmallCalendarScreen()) return;
   const block = state.calendar.blocks.find((candidate) => candidate.id === state.calendar.selectedBlockId);
   if (!block) return;
-  if (!window.confirm(`確定刪除「${block.title}」的行事曆時間條？`)) return;
+  if (!window.confirm(`確定刪除「${block.title}」的行事曆安排嗎？`)) return;
   try {
     await api(`/api/calendar/blocks/${block.id}`, { method: "DELETE" });
     state.calendar.selectedBlockId = null;
-    showNotice("已刪除行事曆時間條");
+    showNotice("已刪除行事曆安排");
     await loadCalendar();
   } catch (error) {
-    showNotice(`刪除行事曆時間條失敗：${error.message}`, true);
+    showNotice(`刪除行事曆安排失敗：${error.message}`, true);
   }
+}
+
+function openSelectedCalendarItem() {
+  const block = state.calendar.blocks.find((candidate) => candidate.id === state.calendar.selectedBlockId);
+  if (!block) return;
+  const item = itemById(block.item_id)
+    || state.calendar.availableItems.find((candidate) => candidate.id === block.item_id);
+  if (!item) {
+    showNotice("找不到原本的事項", true);
+    return;
+  }
+  state.view = item.in_archive ? "archive" : item.in_todo ? "todo" : "inbox";
+  state.expandedIds.clear();
+  state.expandedIds.add(item.id);
+  state.calendar.selectedItemId = null;
+  state.calendar.selectedBlockId = null;
+  state.calendar.drag = null;
+  if (state.view !== "archive") state.archiveSelectedIds.clear();
+  render();
 }
 
 async function saveCalendarDates() {
@@ -1472,11 +1494,29 @@ function renderCalendar() {
   const selectedBlock = state.calendar.blocks.find((block) => block.id === state.calendar.selectedBlockId);
   const preview = calendarDragPreview();
   elements.calendarSelection.hidden = !selectedTitle && !selectedBlock && !preview;
-  elements.calendarSelectionText.textContent = preview
-    ? `預覽：${preview.start_date}～${preview.end_date}`
-    : selectedBlock
-      ? `已選取：${selectedBlock.title}（${selectedBlock.start_date}～${selectedBlock.end_date}）`
-      : selectedTitle ? `準備安排：${selectedTitle}` : "";
+  elements.calendarSelectionText.replaceChildren();
+  if (preview) {
+    const previewText = document.createElement("span");
+    previewText.className = "calendar-selection-date";
+    previewText.textContent = `預覽：${preview.start_date}～${preview.end_date}`;
+    elements.calendarSelectionText.append(previewText);
+  } else if (selectedBlock) {
+    const prefix = document.createElement("span");
+    prefix.textContent = "已選取：";
+    const title = document.createElement("strong");
+    title.className = "calendar-selection-title";
+    title.textContent = selectedBlock.title;
+    const dates = document.createElement("span");
+    dates.className = "calendar-selection-date";
+    dates.textContent = `${selectedBlock.start_date}～${selectedBlock.end_date}`;
+    elements.calendarSelectionText.append(prefix, title, dates);
+  } else if (selectedTitle) {
+    const pending = document.createElement("span");
+    pending.className = "calendar-selection-title";
+    pending.textContent = `準備安排：${selectedTitle}`;
+    elements.calendarSelectionText.append(pending);
+  }
+  elements.calendarOpenItem.hidden = !selectedBlock || Boolean(state.calendar.drag);
   elements.calendarDeleteBlock.hidden = !selectedBlock || Boolean(state.calendar.drag);
   const dateEditing = Boolean(selectedBlock && !preview && !state.calendar.drag && !isSmallCalendarScreen());
   elements.calendarDateEdit.hidden = !dateEditing;
@@ -1925,12 +1965,27 @@ elements.calendarGrid.addEventListener("touchstart", startCalendarSwipe, { passi
 elements.calendarGrid.addEventListener("touchend", finishCalendarSwipe, { passive: true });
 elements.calendarGrid.addEventListener("touchcancel", cancelCalendarSwipe, { passive: true });
 elements.calendarGrid.addEventListener("wheel", handleCalendarWheel, { passive: false });
-elements.calendarClearSelection.addEventListener("click", () => {
+elements.calendarOpenItem.addEventListener("click", () => openSelectedCalendarItem());
+elements.calendarDeleteBlock.addEventListener("click", () => void deleteSelectedCalendarBlock());
+
+function closeCalendarSelection() {
+  if (state.view !== "calendar" || state.calendar.drag) return;
+  if (!state.calendar.selectedItemId && !state.calendar.selectedBlockId) return;
   state.calendar.selectedItemId = null;
   state.calendar.selectedBlockId = null;
   renderCalendar();
+}
+
+document.addEventListener("click", (event) => {
+  if (state.view !== "calendar" || elements.calendarSelection.hidden) return;
+  if (event.target.closest("#calendarSelection, .calendar-block, .calendar-day")) return;
+  closeCalendarSelection();
 });
-elements.calendarDeleteBlock.addEventListener("click", () => void deleteSelectedCalendarBlock());
+
+document.addEventListener("keydown", (event) => {
+  if (event.key !== "Escape") return;
+  closeCalendarSelection();
+});
 elements.resourceSearch.addEventListener("input", () => {
   state.resources.query = elements.resourceSearch.value;
   clearTimeout(elements.resourceSearch.searchTimer);
@@ -1969,3 +2024,4 @@ window.addEventListener("online", () => {
 window.addEventListener("offline", () => setConnection(false, "目前離線"));
 
 if (!initializeFirebase()) void loadItems();
+
