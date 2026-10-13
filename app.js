@@ -160,9 +160,15 @@ function calendarItemForBlock(block) {
   const itemId = calendarItemId(block);
   const direct = remote.items.find((candidate) => normalizedRemoteId(candidate.id) === normalizedRemoteId(itemId));
   if (direct) return direct;
-  const dateMatches = remote.items.filter((candidate) =>
-    formatCreatedShortDate(candidate.created_at) === formatCalendarShortDate(block?.start_date));
-  return dateMatches.length === 1 ? dateMatches[0] : null;
+  const dateMatches = remote.items
+    .filter((candidate) => formatCreatedShortDate(candidate.created_at) === formatCalendarShortDate(block?.start_date))
+    .sort((a, b) => Number(Boolean(b.in_inbox || b.in_todo)) - Number(Boolean(a.in_inbox || a.in_todo)));
+  return dateMatches[0] || null;
+}
+
+function calendarItemTitle(item) {
+  const parts = [item?.object_name, item?.subject].map((value) => String(value || "").trim()).filter(Boolean);
+  return parts.join("｜") || itemDisplayTitle(item);
 }
 
 function sortItems(items) {
@@ -197,7 +203,7 @@ function remoteRefreshCalendar() {
         in_inbox: Boolean(item?.in_inbox ?? block.in_inbox),
         in_todo: Boolean(item?.in_todo ?? block.in_todo),
         in_archive: Boolean(item?.in_archive ?? block.in_archive),
-        title: item ? `${item.object_name}｜${item.subject}` : (block.title || ""),
+        title: item ? calendarItemTitle(item) : (block.title || ""),
       };
     })
     .filter((block) => !block.in_archive);
@@ -1641,7 +1647,7 @@ function calendarBlockTitle(block) {
   const blockFields = [block.object_name, block.subject, block.item_name, block.name, block.label]
     .map((value) => String(value || "").trim()).filter(Boolean);
   return block.title
-    || (item ? `${item.object_name}｜${item.subject}` : blockFields.join("｜") || "未命名");
+    || (item ? calendarItemTitle(item) : blockFields.join("｜") || "未命名");
 }
 
 function appendCalendarBar(row, block, weekStart, preview) {
@@ -1720,7 +1726,7 @@ function calendarLane(row, block) {
 function calendarSelectedTitle() {
   const item = itemById(state.calendar.selectedItemId)
     || state.calendar.availableItems.find((candidate) => String(candidate.id) === String(state.calendar.selectedItemId));
-  if (item) return `${item.object_name}｜${item.subject}`;
+  if (item) return calendarItemTitle(item);
   const block = state.calendar.blocks.find((candidate) => normalizedRemoteId(calendarItemId(candidate)) === normalizedRemoteId(state.calendar.selectedItemId));
   return block ? calendarBlockTitle(block) : "";
 }
