@@ -145,6 +145,17 @@ function itemDisplayTitle(item) {
   return fallback || "未命名事項";
 }
 
+function normalizedRemoteId(value) {
+  if (value && typeof value === "object") {
+    return String(value.id || value.path || value._key?.path?.segments?.at(-1) || "");
+  }
+  return String(value ?? "");
+}
+
+function calendarItemId(block) {
+  return block?.item_id ?? block?.itemId ?? block?.itemID ?? block?.item_ref ?? block?.item ?? "";
+}
+
 function sortItems(items) {
   return [...items].sort((a, b) => {
     const pinnedOrder = Number(Boolean(b.is_pinned)) - Number(Boolean(a.is_pinned));
@@ -168,9 +179,10 @@ function remoteRefreshCalendar() {
   state.calendar.blocks = remote.blocks
     .filter((block) => block.end_date >= first && block.start_date <= last)
     .map((block) => {
-      const item = remote.items.find((candidate) => String(candidate.id) === String(block.item_id));
+      const item = remote.items.find((candidate) => normalizedRemoteId(candidate.id) === normalizedRemoteId(calendarItemId(block)));
       return {
         ...block,
+        item_id: calendarItemId(block),
         object_name: item?.object_name || block.object_name || "",
         subject: item?.subject || block.subject || "",
         in_inbox: Boolean(item?.in_inbox ?? block.in_inbox),
@@ -180,9 +192,9 @@ function remoteRefreshCalendar() {
       };
     })
     .filter((block) => !block.in_archive);
-  const arranged = new Set(remote.blocks.map((block) => block.item_id));
+  const arranged = new Set(remote.blocks.map((block) => normalizedRemoteId(calendarItemId(block))));
   state.calendar.availableItems = remote.items
-    .filter((item) => (item.in_inbox || item.in_todo) && ![...arranged].some((id) => String(id) === String(item.id)))
+    .filter((item) => (item.in_inbox || item.in_todo) && !arranged.has(normalizedRemoteId(item.id)))
     .sort((a, b) => String(b.created_at).localeCompare(String(a.created_at)));
 }
 
@@ -547,7 +559,7 @@ function activeItems() {
 
 function itemById(itemId) {
   return [...state.inboxItems, ...state.todoItems, ...state.archiveItems]
-    .find((item) => String(item.id) === String(itemId));
+    .find((item) => normalizedRemoteId(item.id) === normalizedRemoteId(itemId));
 }
 
 async function loadItems({ keepExpanded = true } = {}) {
@@ -1249,7 +1261,8 @@ function countWeekdays(start, end) {
 
 function calendarBlockForItem(itemId) {
   const blocks = remote.enabled ? remote.blocks : state.calendar.blocks;
-  return blocks.find((block) => block.item_id === itemId && block.start_date && block.end_date) || null;
+  return blocks.find((block) => normalizedRemoteId(calendarItemId(block)) === normalizedRemoteId(itemId)
+    && block.start_date && block.end_date) || null;
 }
 
 async function togglePinnedItem(item) {
@@ -1323,8 +1336,9 @@ async function deleteSelectedCalendarBlock() {
 function openSelectedCalendarItem() {
   const block = state.calendar.blocks.find((candidate) => candidate.id === state.calendar.selectedBlockId);
   if (!block) return;
-  const item = itemById(block.item_id)
-    || state.calendar.availableItems.find((candidate) => candidate.id === block.item_id);
+  const itemId = calendarItemId(block);
+  const item = itemById(itemId)
+    || state.calendar.availableItems.find((candidate) => normalizedRemoteId(candidate.id) === normalizedRemoteId(itemId));
   if (!item) {
     showNotice("找不到原本的事項", true);
     return;
@@ -1603,15 +1617,16 @@ function renderCalendarBlocks(row, weekStart, skipBlockId = "") {
 }
 
 function calendarColorIndex(block) {
-  const source = String(block.id || block.item_id || block.title || "");
+  const source = String(block.id || normalizedRemoteId(calendarItemId(block)) || block.title || "");
   let hash = 0;
   for (const character of source) hash = ((hash << 5) - hash + character.charCodeAt(0)) | 0;
   return Math.abs(hash) % 8;
 }
 
 function calendarBlockTitle(block) {
-  const item = itemById(block.item_id)
-    || state.calendar.availableItems.find((candidate) => String(candidate.id) === String(block.item_id));
+  const itemId = calendarItemId(block);
+  const item = itemById(itemId)
+    || state.calendar.availableItems.find((candidate) => normalizedRemoteId(candidate.id) === normalizedRemoteId(itemId));
   return block.title
     || (item ? `${item.object_name}｜${item.subject}` : "未命名");
 }
@@ -1692,7 +1707,7 @@ function calendarSelectedTitle() {
   const item = itemById(state.calendar.selectedItemId)
     || state.calendar.availableItems.find((candidate) => String(candidate.id) === String(state.calendar.selectedItemId));
   if (item) return `${item.object_name}｜${item.subject}`;
-  const block = state.calendar.blocks.find((candidate) => candidate.item_id === state.calendar.selectedItemId);
+  const block = state.calendar.blocks.find((candidate) => normalizedRemoteId(calendarItemId(candidate)) === normalizedRemoteId(state.calendar.selectedItemId));
   return block ? calendarBlockTitle(block) : "";
 }
 
