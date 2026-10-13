@@ -1641,6 +1641,10 @@ function appendCalendarBar(row, block, weekStart, preview) {
   bar.className = `calendar-block calendar-color-${calendarColorIndex(block)}${preview ? " is-preview" : ""}`;
   bar.dataset.blockId = block.id;
   bar.dataset.itemId = normalizedRemoteId(calendarItemId(block));
+  bar.dataset.debugBlock = Object.entries(block)
+    .filter(([, value]) => value === null || ["string", "number", "boolean"].includes(typeof value))
+    .map(([key, value]) => `${key}=${value}`)
+    .join("|");
   bar.style.left = `${(startOffset / 7) * 100}%`;
   bar.style.width = `${(dayCount / 7) * 100}%`;
   const lane = calendarLane(row, block);
