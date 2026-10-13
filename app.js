@@ -1308,7 +1308,7 @@ async function deleteSelectedCalendarBlock() {
   if (isSmallCalendarScreen()) return;
   const block = state.calendar.blocks.find((candidate) => candidate.id === state.calendar.selectedBlockId);
   if (!block) return;
-  if (!window.confirm(`確定刪除「${block.title}」的行事曆安排嗎？`)) return;
+  if (!window.confirm(`確定刪除「${calendarBlockTitle(block)}」的行事曆安排嗎？`)) return;
   try {
     await api(`/api/calendar/blocks/${block.id}`, { method: "DELETE" });
     state.calendar.selectedBlockId = null;
@@ -1505,7 +1505,7 @@ function renderCalendar() {
     prefix.textContent = "已選取：";
     const title = document.createElement("strong");
     title.className = "calendar-selection-title";
-    title.textContent = selectedBlock.title;
+    title.textContent = calendarBlockTitle(selectedBlock);
     const dates = document.createElement("span");
     dates.className = "calendar-selection-date";
     dates.textContent = `${selectedBlock.start_date}～${selectedBlock.end_date}`;
@@ -1608,6 +1608,13 @@ function calendarColorIndex(block) {
   return Math.abs(hash) % 8;
 }
 
+function calendarBlockTitle(block) {
+  const item = itemById(block.item_id)
+    || state.calendar.availableItems.find((candidate) => candidate.id === block.item_id);
+  return block.title
+    || (item ? `${item.object_name}｜${item.subject}` : "未命名");
+}
+
 function appendCalendarBar(row, block, weekStart, preview) {
   const visibleStart = maxDate(block.start_date, isoDate(weekStart));
   const visibleEnd = minDate(block.end_date, isoDate(addDays(weekStart, 6)));
@@ -1624,7 +1631,9 @@ function appendCalendarBar(row, block, weekStart, preview) {
   bar.style.top = `${22 + lane * 16}px`;
   const label = document.createElement("span");
   label.className = "calendar-block-label";
-  label.textContent = block.title;
+  const title = calendarBlockTitle(block);
+  label.textContent = title;
+  bar.setAttribute("aria-label", `${title}，${block.start_date}～${block.end_date}`);
   bar.append(label);
   if (!preview) {
     bar.addEventListener("pointerdown", (event) => beginCalendarBlock(event, block));
@@ -1683,7 +1692,7 @@ function calendarSelectedTitle() {
     || state.calendar.availableItems.find((candidate) => candidate.id === state.calendar.selectedItemId);
   if (item) return `${item.object_name}｜${item.subject}`;
   const block = state.calendar.blocks.find((candidate) => candidate.item_id === state.calendar.selectedItemId);
-  return block?.title || "";
+  return block ? calendarBlockTitle(block) : "";
 }
 
 function beginCalendarCreate(event, dateValue) {
