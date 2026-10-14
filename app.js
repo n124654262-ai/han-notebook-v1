@@ -43,6 +43,7 @@ const state = {
     documents: [],
     expandedId: null,
     details: new Map(),
+    deleteConfirmations: new Map(),
     query: "",
   },
 };
@@ -451,6 +452,14 @@ async function remoteApi(path, options = {}) {
     if (!updated.document_name) throw new Error("文件名稱不能空白");
     await ref.update({ document_name: updated.document_name, formal_content: updated.formal_content, updated_at: now });
     return { document: updated };
+  }
+  if (parts[1] === "resources" && parts.length === 3 && method === "DELETE") {
+    const ref = remoteCollection("documents").doc(parts[2]);
+    const snapshot = await ref.get();
+    if (!snapshot.exists) throw new Error("找不到正式文件");
+    const documentData = remoteDoc(snapshot.data(), parts[2]);
+    await ref.delete();
+    return { document: documentData };
   }
   if (parts[1] === "items" && parts.length === 4 && parts[3] === "document" && method === "POST") {
     const itemSnapshot = await remoteCollection("items").doc(parts[2]).get();
@@ -1053,7 +1062,8 @@ function createOfficialEditor(item) {
   form.className = "official-form";
   const name = formField("文件名稱", "input", item.object_name || "", 200);
   name.control.required = true;
-  const formal = formField("正式內容", "textarea", "", 100000);
+  const sourceContent = String(item.subject || item.original_message || "").trim();
+  const formal = formField("正式內容", "textarea", sourceContent, 100000);
   formal.control.required = true;
   const actions = document.createElement("div");
   actions.className = "form-actions";
@@ -1910,11 +1920,20 @@ function createResourceDetails(documentData) {
   const formal = formField("正式內容", "textarea", documentData.formal_content, 100000);
   const actions = document.createElement("div");
   actions.className = "form-actions";
+  const deleteButton = document.createElement("button");
+  deleteButton.type = "button";
+  deleteButton.className = "danger-button";
+  const expiresAt = state.resources.deleteConfirmations.get(documentData.id) || 0;
+  const confirming = expiresAt > Date.now();
+  deleteButton.textContent = confirming ? "確認刪除" : "刪除";
+  deleteButton.setAttribute("aria-label", confirming ? "確認刪除正式文件" : "刪除正式文件");
+  deleteButton.classList.toggle("is-confirming", confirming);
+  deleteButton.addEventListener("click", () => void deleteResource(documentData));
   const save = document.createElement("button");
   save.type = "submit";
   save.className = "primary-button";
   save.textContent = "保存修改";
-  actions.append(save);
+  actions.append(deleteButton, save);
   form.append(name.wrapper, formal.wrapper, actions);
   form.addEventListener("submit", async (event) => {
     event.preventDefault();
@@ -1934,6 +1953,28 @@ function createResourceDetails(documentData) {
   });
   details.append(dateText, form);
   return details;
+}
+
+async function deleteResource(documentData) {
+  const documentId = String(documentData.id || "");
+  if (!documentId) return;
+  const expiresAt = state.resources.deleteConfirmations.get(documentId) || 0;
+  if (expiresAt <= Date.now()) {
+    state.resources.deleteConfirmations.set(documentId, Date.now() + 8000);
+    showNotice("請在 8 秒內再按一次「確認刪除」，刪除後無法復原。");
+    renderResources();
+    return;
+  }
+  state.resources.deleteConfirmations.delete(documentId);
+  try {
+    await api(`/api/resources/${documentId}`, { method: "DELETE" });
+    state.resources.details.delete(documentId);
+    if (state.resources.expandedId === documentId) state.resources.expandedId = null;
+    showNotice("已刪除正式文件");
+    await loadResources();
+  } catch (error) {
+    showNotice(`刪除正式文件失敗：${error.message}`, true);
+  }
 }
 
 
