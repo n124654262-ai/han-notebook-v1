@@ -937,11 +937,9 @@ function createDetails(item) {
     }),
     actionButton("行事曆", false, () => openCalendarFor(item.id)),
     actionButton("升級資源庫", false, async () => {
-      if (!(await syncNote(item.id, notes.textarea, notes.status))) return;
       const currentItem = itemById(item.id) || item;
-      const notesText = notes.textarea?.value ?? readDraft(item.id)?.text ?? currentItem.my_notes ?? "";
       if (!details.querySelector(".official-editor")) {
-        details.append(createOfficialEditor(currentItem, notesText));
+        details.append(createOfficialEditor(currentItem));
       }
     }),
     actionButton(state.completeConfirmations.has(item.id) ? "再次完成" : "完成", false, async () => {
@@ -1046,19 +1044,17 @@ function autoGrowTextarea(textarea) {
   textarea.style.height = `${textarea.scrollHeight + (lineHeight * 2)}px`;
 }
 
-function createOfficialEditor(item, notesText) {
+function createOfficialEditor(item) {
   const editor = document.createElement("section");
   editor.className = "official-editor";
   const heading = document.createElement("h3");
   heading.textContent = "升級：整理正式文件";
   const form = document.createElement("form");
   form.className = "official-form";
-  const name = formField("文件名稱", "input", `${item.object_name}｜${item.subject}`, 200);
-  const original = formField("原始內容", "textarea", item.original_message, 100000);
-  const notes = formField("我的紀錄", "textarea", notesText, 100000);
+  const name = formField("文件名稱", "input", item.object_name || "", 200);
+  name.control.required = true;
   const formal = formField("正式內容", "textarea", "", 100000);
-  const dateField = formField("文件日期", "input", new Date().toISOString().slice(0, 10), 10);
-  dateField.control.type = "date";
+  formal.control.required = true;
   const actions = document.createElement("div");
   actions.className = "form-actions";
   const cancel = document.createElement("button");
@@ -1071,20 +1067,15 @@ function createOfficialEditor(item, notesText) {
   submit.className = "primary-button";
   submit.textContent = "建立正式文件";
   actions.append(cancel, submit);
-  form.append(name.wrapper, dateField.wrapper, original.wrapper, notes.wrapper, formal.wrapper, actions);
+  form.append(name.wrapper, formal.wrapper, actions);
   form.addEventListener("submit", async (event) => {
     event.preventDefault();
     submit.disabled = true;
     try {
-      const synced = await syncNote(item.id, notes.control, null);
-      if (!synced) throw new Error("我的紀錄尚未同步，請確認網路後再試");
       await api(`/api/items/${item.id}/document`, {
         method: "POST",
         body: JSON.stringify({
           document_name: name.control.value.trim(),
-          document_date: dateField.control.value,
-          original_content: original.control.value,
-          my_notes: notes.control.value,
           formal_content: formal.control.value,
         }),
       });
@@ -1912,19 +1903,7 @@ function createResourceDetails(documentData) {
   details.className = "resource-details";
   const dateText = document.createElement("p");
   dateText.className = "resource-date";
-  dateText.textContent = `日期：${documentData.document_date}　檔案：${documentData.file_name}`;
-  const source = document.createElement("div");
-  source.className = "detail-list";
-  for (const [label, value] of [["原始內容", documentData.original_content], ["我的紀錄", documentData.my_notes]]) {
-    const pair = document.createElement("div");
-    pair.className = "detail-pair";
-    const term = document.createElement("dt");
-    term.textContent = label;
-    const description = document.createElement("dd");
-    description.textContent = value || "—";
-    pair.append(term, description);
-    source.append(pair);
-  }
+  dateText.textContent = `建立日期：${documentData.document_date}`;
   const form = document.createElement("form");
   form.className = "resource-edit-form";
   const name = formField("文件名稱", "input", documentData.document_name, 200);
@@ -1953,7 +1932,7 @@ function createResourceDetails(documentData) {
       save.disabled = false;
     }
   });
-  details.append(dateText, source, form);
+  details.append(dateText, form);
   return details;
 }
 
