@@ -1076,7 +1076,7 @@ function createOfficialEditor(item, notesText) {
     event.preventDefault();
     submit.disabled = true;
     try {
-      const synced = await syncNote(item.id, notesTextarea, null);
+      const synced = await syncNote(item.id, notes.control, null);
       if (!synced) throw new Error("我的紀錄尚未同步，請確認網路後再試");
       await api(`/api/items/${item.id}/document`, {
         method: "POST",
