@@ -550,6 +550,65 @@ function showNotice(message, isError = false) {
   elements.notice.hidden = !message;
 }
 
+function deleteCountdownRemaining(pending) {
+  if (!pending?.deleteAt) return 0;
+  return Math.max(0, Math.ceil((pending.deleteAt - Date.now()) / 1000));
+}
+
+function clearDeleteCountdownTimers(pending) {
+  if (!pending) return;
+  if (pending.timer) window.clearTimeout(pending.timer);
+  if (pending.uiTimer) window.clearInterval(pending.uiTimer);
+  pending.timer = null;
+  pending.uiTimer = null;
+}
+
+function applyDeleteButtonState(button, pending, {
+  idleText,
+  idleLabel,
+  confirmText = "確定刪除？",
+  confirmLabel,
+  deletingLabel = "刪除中",
+}) {
+  if (!button) return;
+  const confirming = pending?.phase === "confirm";
+  const countingDown = pending?.phase === "countdown";
+  const deleting = pending?.phase === "deleting";
+  button.textContent = deleting
+    ? "刪除中…"
+    : countingDown
+      ? `取消刪除（${deleteCountdownRemaining(pending)}）`
+      : confirming ? confirmText : idleText;
+  button.setAttribute("aria-label", deleting
+    ? deletingLabel
+    : countingDown
+      ? `取消刪除（${deleteCountdownRemaining(pending)}）`
+      : confirming ? (confirmLabel || idleLabel) : idleLabel);
+  button.classList.toggle("is-confirming", Boolean(confirming || countingDown));
+  button.disabled = deleting;
+}
+
+function reconcileDeleteCountdown(pending) {
+  if (pending?.phase !== "countdown") return;
+  if (Date.now() < pending.deleteAt) {
+    pending.refresh?.();
+    return;
+  }
+  pending.phase = "deleting";
+  clearDeleteCountdownTimers(pending);
+  pending.refresh?.();
+  void pending.onExpire?.();
+}
+
+function startDeleteCountdown(pending, refresh, onExpire) {
+  pending.deleteAt = Date.now() + DELETE_COUNTDOWN_SECONDS * 1000;
+  pending.refresh = refresh;
+  pending.onExpire = onExpire;
+  pending.timer = window.setTimeout(() => reconcileDeleteCountdown(pending), DELETE_COUNTDOWN_SECONDS * 1000);
+  pending.uiTimer = window.setInterval(() => reconcileDeleteCountdown(pending), 250);
+  refresh();
+}
+
 async function api(path, options = {}) {
   if (remote.enabled) return remoteApi(path, options);
   const response = await fetch(path, {
@@ -701,25 +760,19 @@ function renderList() {
     const button = document.createElement("button");
     button.type = "button";
     button.className = "danger-button";
+    button.id = "archiveDeleteButton";
     const pendingDelete = state.archiveDeleteConfirmation
       && state.archiveDeleteConfirmation.ids.join("\u0000") === [...state.archiveSelectedIds].join("\u0000")
       ? state.archiveDeleteConfirmation
       : null;
-    const confirming = pendingDelete?.phase === "confirm";
-    const countingDown = pendingDelete?.phase === "countdown";
-    const deleting = pendingDelete?.phase === "deleting";
-    button.textContent = deleting
-      ? "刪除中…"
-      : countingDown
-        ? `取消刪除（${pendingDelete.remaining}）`
-        : confirming ? "確定刪除？" : "批次刪除";
-    button.setAttribute("aria-label", deleting
-      ? "刪除中"
-      : countingDown
-        ? `取消刪除（${pendingDelete.remaining}）`
-        : confirming ? "確定刪除" : "批次刪除");
-    button.classList.toggle("is-confirming", Boolean(confirming || countingDown));
-    button.disabled = state.archiveSelectedIds.size === 0 || deleting;
+    applyDeleteButtonState(button, pendingDelete, {
+      idleText: "批次刪除",
+      idleLabel: "批次刪除",
+      confirmText: "確定刪除？",
+      confirmLabel: "確定刪除",
+      deletingLabel: "刪除中",
+    });
+    button.disabled = state.archiveSelectedIds.size === 0 || button.disabled;
     button.addEventListener("click", () => void deleteSelectedArchiveItems());
     actions.append(count, selectAll, clearSelection, button);
     elements.listSection.append(actions);
@@ -1256,7 +1309,7 @@ async function deleteSelectedArchiveItems() {
   const pending = state.archiveDeleteConfirmation;
   const sameSelection = pending && pending.ids.join("\u0000") === itemIds.join("\u0000");
   if (!sameSelection) {
-    state.archiveDeleteConfirmation = { ids: itemIds, phase: "confirm", remaining: 0, timer: null };
+    state.archiveDeleteConfirmation = { ids: itemIds, phase: "confirm", timer: null, uiTimer: null };
     showNotice(`請再按一次「確定刪除？」確認刪除 ${itemIds.length} 筆封存資料。`);
     renderList();
     return;
@@ -1274,27 +1327,30 @@ async function deleteSelectedArchiveItems() {
 
 function startArchiveDeleteCountdown(itemIds) {
   cancelArchiveDeleteConfirmation();
-  const pending = { ids: [...itemIds], phase: "countdown", remaining: DELETE_COUNTDOWN_SECONDS, timer: null };
+  const pending = { ids: [...itemIds], phase: "countdown", timer: null, uiTimer: null };
   state.archiveDeleteConfirmation = pending;
   showNotice(`刪除倒數 ${DELETE_COUNTDOWN_SECONDS} 秒；期間再按同一按鈕可取消。`);
   renderList();
-  pending.timer = window.setInterval(() => {
-    pending.remaining -= 1;
-    if (pending.remaining > 0) {
-      renderList();
-      return;
-    }
-    window.clearInterval(pending.timer);
-    pending.timer = null;
-    pending.phase = "deleting";
-    renderList();
-    void performArchiveDeletion(pending);
-  }, 1000);
+  startDeleteCountdown(
+    pending,
+    () => {
+      const button = document.querySelector("#archiveDeleteButton");
+      applyDeleteButtonState(button, pending, {
+        idleText: "批次刪除",
+        idleLabel: "批次刪除",
+        confirmText: "確定刪除？",
+        confirmLabel: "確定刪除",
+        deletingLabel: "刪除中",
+      });
+      if (button) button.disabled = state.archiveSelectedIds.size === 0 || button.disabled;
+    },
+    () => performArchiveDeletion(pending),
+  );
 }
 
 function cancelArchiveDeleteConfirmation(showMessage = false) {
   const pending = state.archiveDeleteConfirmation;
-  if (pending?.timer) window.clearInterval(pending.timer);
+  clearDeleteCountdownTimers(pending);
   state.archiveDeleteConfirmation = null;
   if (showMessage) {
     showNotice("已取消刪除，資料保留。");
@@ -1304,6 +1360,7 @@ function cancelArchiveDeleteConfirmation(showMessage = false) {
 
 async function performArchiveDeletion(pending) {
   const itemIds = pending.ids;
+  clearDeleteCountdownTimers(pending);
   try {
     const data = await api("/api/items/batch-delete", {
       method: "POST",
@@ -1404,7 +1461,7 @@ async function deleteSelectedCalendarBlock() {
   const pending = state.calendar.deleteConfirmation;
   const sameBlock = pending && pending.blockId === block.id;
   if (!sameBlock) {
-    state.calendar.deleteConfirmation = { blockId: block.id, phase: "confirm", remaining: 0, timer: null };
+    state.calendar.deleteConfirmation = { blockId: block.id, phase: "confirm", timer: null, uiTimer: null };
     showNotice(`請再按一次「確定刪除？」刪除「${calendarBlockTitle(block)}」。`);
     renderCalendar();
     return;
@@ -1422,27 +1479,30 @@ async function deleteSelectedCalendarBlock() {
 
 function startCalendarDeleteCountdown(block) {
   cancelCalendarDeleteConfirmation();
-  const pending = { blockId: block.id, phase: "countdown", remaining: DELETE_COUNTDOWN_SECONDS, timer: null };
+  const pending = { blockId: block.id, phase: "countdown", timer: null, uiTimer: null };
   state.calendar.deleteConfirmation = pending;
   showNotice(`刪除倒數 ${DELETE_COUNTDOWN_SECONDS} 秒；期間再按同一按鈕可取消。`);
   renderCalendar();
-  pending.timer = window.setInterval(() => {
-    pending.remaining -= 1;
-    if (pending.remaining > 0) {
-      renderCalendar();
-      return;
-    }
-    window.clearInterval(pending.timer);
-    pending.timer = null;
-    pending.phase = "deleting";
-    renderCalendar();
-    void performCalendarDeletion(block, pending);
-  }, 1000);
+  startDeleteCountdown(
+    pending,
+    () => {
+      const selected = state.calendar.deleteConfirmation;
+      if (selected !== pending) return;
+      applyDeleteButtonState(elements.calendarDeleteBlock, pending, {
+        idleText: "刪除",
+        idleLabel: "刪除行事曆安排",
+        confirmText: "確定刪除？",
+        confirmLabel: "確定刪除行事曆安排",
+        deletingLabel: "刪除中",
+      });
+    },
+    () => performCalendarDeletion(block, pending),
+  );
 }
 
 function cancelCalendarDeleteConfirmation(showMessage = false) {
   const pending = state.calendar.deleteConfirmation;
-  if (pending?.timer) window.clearInterval(pending.timer);
+  clearDeleteCountdownTimers(pending);
   state.calendar.deleteConfirmation = null;
   if (showMessage) {
     showNotice("已取消刪除，資料保留。");
@@ -1459,9 +1519,9 @@ function cancelAllDeleteConfirmations() {
 }
 
 async function performCalendarDeletion(block, pending) {
+  clearDeleteCountdownTimers(pending);
   try {
     await api(`/api/calendar/blocks/${block.id}`, { method: "DELETE" });
-    if (pending.timer) window.clearInterval(pending.timer);
     state.calendar.deleteConfirmation = null;
     state.calendar.selectedBlockId = null;
     showNotice("已刪除行事曆安排");
@@ -1679,21 +1739,13 @@ function renderCalendar() {
   const pendingDelete = selectedBlock && state.calendar.deleteConfirmation?.blockId === selectedBlock.id
     ? state.calendar.deleteConfirmation
     : null;
-  const confirmingDelete = pendingDelete?.phase === "confirm";
-  const countingDownDelete = pendingDelete?.phase === "countdown";
-  const deletingBlock = pendingDelete?.phase === "deleting";
-  elements.calendarDeleteBlock.textContent = deletingBlock
-    ? "刪除中…"
-    : countingDownDelete
-      ? `取消刪除（${pendingDelete.remaining}）`
-      : confirmingDelete ? "確定刪除？" : "刪除";
-  elements.calendarDeleteBlock.setAttribute("aria-label", deletingBlock
-    ? "刪除中"
-    : countingDownDelete
-      ? `取消刪除（${pendingDelete.remaining}）`
-      : confirmingDelete ? "確定刪除行事曆安排" : "刪除行事曆安排");
-  elements.calendarDeleteBlock.classList.toggle("is-confirming", Boolean(confirmingDelete || countingDownDelete));
-  elements.calendarDeleteBlock.disabled = deletingBlock;
+  applyDeleteButtonState(elements.calendarDeleteBlock, pendingDelete, {
+    idleText: "刪除",
+    idleLabel: "刪除行事曆安排",
+    confirmText: "確定刪除？",
+    confirmLabel: "確定刪除行事曆安排",
+    deletingLabel: "刪除中",
+  });
   const dateEditing = Boolean(selectedBlock && !preview && !state.calendar.drag && !isSmallCalendarScreen());
   elements.calendarDateEdit.hidden = !dateEditing;
   if (dateEditing) {
@@ -2073,22 +2125,15 @@ function createResourceDetails(documentData) {
   const deleteButton = document.createElement("button");
   deleteButton.type = "button";
   deleteButton.className = "danger-button";
+  deleteButton.dataset.resourceDeleteId = String(documentData.id);
   const pendingDelete = state.resources.deleteConfirmations.get(String(documentData.id)) || null;
-  const confirming = pendingDelete?.phase === "confirm";
-  const countingDown = pendingDelete?.phase === "countdown";
-  const deleting = pendingDelete?.phase === "deleting";
-  deleteButton.textContent = deleting
-    ? "刪除中…"
-    : countingDown
-      ? `取消刪除（${pendingDelete.remaining}）`
-      : confirming ? "確定刪除？" : "刪除";
-  deleteButton.setAttribute("aria-label", deleting
-    ? "刪除中"
-    : countingDown
-      ? `取消刪除（${pendingDelete.remaining}）`
-      : confirming ? "確定刪除正式文件" : "刪除正式文件");
-  deleteButton.classList.toggle("is-confirming", Boolean(confirming || countingDown));
-  deleteButton.disabled = deleting;
+  applyDeleteButtonState(deleteButton, pendingDelete, {
+    idleText: "刪除",
+    idleLabel: "刪除正式文件",
+    confirmText: "確定刪除？",
+    confirmLabel: "確定刪除正式文件",
+    deletingLabel: "刪除中",
+  });
   deleteButton.addEventListener("click", () => void deleteResource(documentData));
   const save = document.createElement("button");
   save.type = "submit";
@@ -2121,7 +2166,7 @@ async function deleteResource(documentData) {
   if (!documentId) return;
   const pending = state.resources.deleteConfirmations.get(documentId);
   if (!pending) {
-    state.resources.deleteConfirmations.set(documentId, { phase: "confirm", remaining: 0, timer: null });
+    state.resources.deleteConfirmations.set(documentId, { phase: "confirm", timer: null, uiTimer: null });
     showNotice("請再按一次「確定刪除？」確認刪除正式文件。");
     renderResources();
     return;
@@ -2139,27 +2184,31 @@ function startResourceDeleteCountdown(documentData) {
   const documentId = String(documentData.id || "");
   if (!documentId) return;
   cancelResourceDeleteConfirmation(documentId);
-  const pending = { phase: "countdown", remaining: DELETE_COUNTDOWN_SECONDS, timer: null };
+  const pending = { phase: "countdown", timer: null, uiTimer: null };
   state.resources.deleteConfirmations.set(documentId, pending);
   showNotice(`刪除倒數 ${DELETE_COUNTDOWN_SECONDS} 秒；期間再按同一按鈕可取消。`);
   renderResources();
-  pending.timer = window.setInterval(() => {
-    pending.remaining -= 1;
-    if (pending.remaining > 0) {
-      renderResources();
-      return;
-    }
-    window.clearInterval(pending.timer);
-    pending.timer = null;
-    pending.phase = "deleting";
-    renderResources();
-    void performResourceDeletion(documentData, pending);
-  }, 1000);
+  startDeleteCountdown(
+    pending,
+    () => {
+      const button = document.querySelector(
+        `button[data-resource-delete-id="${CSS.escape(documentId)}"]`,
+      );
+      applyDeleteButtonState(button, pending, {
+        idleText: "刪除",
+        idleLabel: "刪除正式文件",
+        confirmText: "確定刪除？",
+        confirmLabel: "確定刪除正式文件",
+        deletingLabel: "刪除中",
+      });
+    },
+    () => performResourceDeletion(documentData, pending),
+  );
 }
 
 function cancelResourceDeleteConfirmation(documentId, showMessage = false) {
   const pending = state.resources.deleteConfirmations.get(String(documentId));
-  if (pending?.timer) window.clearInterval(pending.timer);
+  clearDeleteCountdownTimers(pending);
   state.resources.deleteConfirmations.delete(String(documentId));
   if (showMessage) {
     showNotice("已取消刪除，資料保留。");
@@ -2169,9 +2218,9 @@ function cancelResourceDeleteConfirmation(documentId, showMessage = false) {
 
 async function performResourceDeletion(documentData, pending) {
   const documentId = String(documentData.id || "");
+  clearDeleteCountdownTimers(pending);
   try {
     await api(`/api/resources/${documentId}`, { method: "DELETE" });
-    if (pending.timer) window.clearInterval(pending.timer);
     state.resources.deleteConfirmations.delete(documentId);
     state.resources.details.delete(documentId);
     if (state.resources.expandedId === documentId) state.resources.expandedId = null;
@@ -2280,8 +2329,14 @@ for (const tab of elements.tabs) {
 }
 
 document.addEventListener("visibilitychange", () => {
-  if (document.visibilityState !== "hidden") return;
-  cancelAllDeleteConfirmations();
+  if (document.visibilityState === "visible") {
+    reconcileDeleteCountdown(state.archiveDeleteConfirmation);
+    reconcileDeleteCountdown(state.calendar.deleteConfirmation);
+    for (const pending of state.resources.deleteConfirmations.values()) {
+      reconcileDeleteCountdown(pending);
+    }
+    return;
+  }
   for (const itemId of state.expandedIds) {
     const textarea = document.querySelector(`#notes-${CSS.escape(itemId)}`);
     const status = textarea?.parentElement?.querySelector(".note-status");
