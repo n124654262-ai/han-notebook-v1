@@ -598,6 +598,7 @@ button:focus-visible {
 
 .danger-button {
   min-height: 38px;
+  min-width: 142px;
   padding: 8px 14px;
   border: 1px solid #a64c4c;
   border-radius: 4px;
@@ -972,6 +973,10 @@ button:focus-visible {
   background: transparent;
   cursor: pointer;
   white-space: nowrap;
+}
+
+#calendarDeleteBlock {
+  min-width: 170px;
 }
 
 .text-button.is-confirming {
