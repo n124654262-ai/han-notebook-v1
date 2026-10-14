@@ -158,12 +158,7 @@ function calendarItemId(block) {
 
 function calendarItemForBlock(block) {
   const itemId = calendarItemId(block);
-  const direct = remote.items.find((candidate) => normalizedRemoteId(candidate.id) === normalizedRemoteId(itemId));
-  if (direct) return direct;
-  const dateMatches = remote.items
-    .filter((candidate) => formatCreatedShortDate(candidate.created_at) === formatCalendarShortDate(block?.start_date))
-    .sort((a, b) => Number(Boolean(b.in_inbox || b.in_todo)) - Number(Boolean(a.in_inbox || a.in_todo)));
-  return dateMatches[0] || null;
+  return remote.items.find((candidate) => normalizedRemoteId(candidate.id) === normalizedRemoteId(itemId)) || null;
 }
 
 function calendarItemTitle(item) {
@@ -195,19 +190,21 @@ function remoteRefreshCalendar() {
     .filter((block) => block.end_date >= first && block.start_date <= last)
     .map((block) => {
       const item = calendarItemForBlock(block);
+      if (!item) return null;
       return {
         ...block,
         item_id: calendarItemId(block),
-        object_name: item?.object_name || block.object_name || "",
-        subject: item?.subject || block.subject || "",
-        in_inbox: Boolean(item?.in_inbox ?? block.in_inbox),
-        in_todo: Boolean(item?.in_todo ?? block.in_todo),
-        in_archive: Boolean(item?.in_archive ?? block.in_archive),
-        title: item ? calendarItemTitle(item) : (block.title || ""),
+        object_name: item.object_name || "",
+        subject: item.subject || "",
+        in_inbox: Boolean(item.in_inbox),
+        in_todo: Boolean(item.in_todo),
+        in_archive: Boolean(item.in_archive),
+        title: calendarItemTitle(item),
       };
     })
+    .filter(Boolean)
     .filter((block) => !block.in_archive);
-  const arranged = new Set(remote.blocks.map((block) => normalizedRemoteId(calendarItemId(block))));
+  const arranged = new Set(state.calendar.blocks.map((block) => normalizedRemoteId(calendarItemId(block))));
   state.calendar.availableItems = remote.items
     .filter((item) => (item.in_inbox || item.in_todo) && !arranged.has(normalizedRemoteId(item.id)))
     .sort((a, b) => String(b.created_at).localeCompare(String(a.created_at)));
