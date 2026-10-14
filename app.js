@@ -27,6 +27,7 @@ const state = {
   expandedIds: new Set(),
   archiveSelectedIds: new Set(),
   archiveDeleteConfirmation: null,
+  renderDeferred: false,
   completeConfirmations: new Set(),
   editingId: null,
   notesEditingIds: new Set(),
@@ -609,6 +610,19 @@ function startDeleteCountdown(pending, refresh, onExpire) {
   refresh();
 }
 
+function hasActiveDeleteOperation() {
+  const isActive = (pending) => ["confirm", "countdown", "deleting"].includes(pending?.phase);
+  return isActive(state.archiveDeleteConfirmation)
+    || isActive(state.calendar.deleteConfirmation)
+    || [...state.resources.deleteConfirmations.values()].some(isActive);
+}
+
+function flushDeferredRender() {
+  if (!state.renderDeferred || hasActiveDeleteOperation()) return;
+  state.renderDeferred = false;
+  render({ force: true, preserveViewport: true });
+}
+
 async function api(path, options = {}) {
   if (remote.enabled) return remoteApi(path, options);
   const response = await fetch(path, {
@@ -694,7 +708,14 @@ async function loadResources() {
   }
 }
 
-function render() {
+function render({ force = false, preserveViewport = false } = {}) {
+  if (!force && hasActiveDeleteOperation()) {
+    state.renderDeferred = true;
+    return;
+  }
+  const previousScrollX = preserveViewport ? window.scrollX : 0;
+  const previousScrollY = preserveViewport ? window.scrollY : 0;
+  state.renderDeferred = false;
   elements.inboxCount.textContent = String(state.inboxItems.length);
   elements.todoCount.textContent = String(state.todoItems.length);
   elements.archiveCount.textContent = String(state.archiveItems.length);
@@ -714,6 +735,9 @@ function render() {
   if (isListView) renderList();
   if (state.view === "calendar") renderCalendar();
   if (state.view === "resources") renderResources();
+  if (preserveViewport) {
+    requestAnimationFrame(() => window.scrollTo(previousScrollX, previousScrollY));
+  }
 }
 
 function renderList() {
@@ -1311,7 +1335,7 @@ async function deleteSelectedArchiveItems() {
   if (!sameSelection) {
     state.archiveDeleteConfirmation = { ids: itemIds, phase: "confirm", timer: null, uiTimer: null };
     showNotice(`請再按一次「確定刪除？」確認刪除 ${itemIds.length} 筆封存資料。`);
-    renderList();
+    refreshArchiveDeleteButton(state.archiveDeleteConfirmation);
     return;
   }
   if (pending.phase === "confirm") {
@@ -1325,25 +1349,30 @@ async function deleteSelectedArchiveItems() {
   return;
 }
 
+function refreshArchiveDeleteButton(pending = state.archiveDeleteConfirmation) {
+  const button = document.querySelector("#archiveDeleteButton");
+  const selectedIds = [...state.archiveSelectedIds];
+  const currentPending = pending && pending.ids.join("\u0000") === selectedIds.join("\u0000")
+    ? pending
+    : null;
+  applyDeleteButtonState(button, currentPending, {
+    idleText: "批次刪除",
+    idleLabel: "批次刪除",
+    confirmText: "確定刪除？",
+    confirmLabel: "確定刪除",
+    deletingLabel: "刪除中",
+  });
+  if (button) button.disabled = selectedIds.length === 0 || button.disabled;
+}
+
 function startArchiveDeleteCountdown(itemIds) {
   cancelArchiveDeleteConfirmation();
   const pending = { ids: [...itemIds], phase: "countdown", timer: null, uiTimer: null };
   state.archiveDeleteConfirmation = pending;
   showNotice(`刪除倒數 ${DELETE_COUNTDOWN_SECONDS} 秒；期間再按同一按鈕可取消。`);
-  renderList();
   startDeleteCountdown(
     pending,
-    () => {
-      const button = document.querySelector("#archiveDeleteButton");
-      applyDeleteButtonState(button, pending, {
-        idleText: "批次刪除",
-        idleLabel: "批次刪除",
-        confirmText: "確定刪除？",
-        confirmLabel: "確定刪除",
-        deletingLabel: "刪除中",
-      });
-      if (button) button.disabled = state.archiveSelectedIds.size === 0 || button.disabled;
-    },
+    () => refreshArchiveDeleteButton(pending),
     () => performArchiveDeletion(pending),
   );
 }
@@ -1354,7 +1383,8 @@ function cancelArchiveDeleteConfirmation(showMessage = false) {
   state.archiveDeleteConfirmation = null;
   if (showMessage) {
     showNotice("已取消刪除，資料保留。");
-    renderList();
+    refreshArchiveDeleteButton(null);
+    flushDeferredRender();
   }
 }
 
@@ -1463,7 +1493,7 @@ async function deleteSelectedCalendarBlock() {
   if (!sameBlock) {
     state.calendar.deleteConfirmation = { blockId: block.id, phase: "confirm", timer: null, uiTimer: null };
     showNotice(`請再按一次「確定刪除？」刪除「${calendarBlockTitle(block)}」。`);
-    renderCalendar();
+    refreshCalendarDeleteButton(state.calendar.deleteConfirmation);
     return;
   }
   if (pending.phase === "confirm") {
@@ -1477,24 +1507,25 @@ async function deleteSelectedCalendarBlock() {
   return;
 }
 
+function refreshCalendarDeleteButton(pending = state.calendar.deleteConfirmation) {
+  applyDeleteButtonState(elements.calendarDeleteBlock, pending, {
+    idleText: "刪除",
+    idleLabel: "刪除行事曆安排",
+    confirmText: "確定刪除？",
+    confirmLabel: "確定刪除行事曆安排",
+    deletingLabel: "刪除中",
+  });
+}
+
 function startCalendarDeleteCountdown(block) {
   cancelCalendarDeleteConfirmation();
   const pending = { blockId: block.id, phase: "countdown", timer: null, uiTimer: null };
   state.calendar.deleteConfirmation = pending;
   showNotice(`刪除倒數 ${DELETE_COUNTDOWN_SECONDS} 秒；期間再按同一按鈕可取消。`);
-  renderCalendar();
   startDeleteCountdown(
     pending,
     () => {
-      const selected = state.calendar.deleteConfirmation;
-      if (selected !== pending) return;
-      applyDeleteButtonState(elements.calendarDeleteBlock, pending, {
-        idleText: "刪除",
-        idleLabel: "刪除行事曆安排",
-        confirmText: "確定刪除？",
-        confirmLabel: "確定刪除行事曆安排",
-        deletingLabel: "刪除中",
-      });
+      if (state.calendar.deleteConfirmation === pending) refreshCalendarDeleteButton(pending);
     },
     () => performCalendarDeletion(block, pending),
   );
@@ -1506,7 +1537,8 @@ function cancelCalendarDeleteConfirmation(showMessage = false) {
   state.calendar.deleteConfirmation = null;
   if (showMessage) {
     showNotice("已取消刪除，資料保留。");
-    renderCalendar();
+    refreshCalendarDeleteButton(null);
+    flushDeferredRender();
   }
 }
 
@@ -1739,13 +1771,7 @@ function renderCalendar() {
   const pendingDelete = selectedBlock && state.calendar.deleteConfirmation?.blockId === selectedBlock.id
     ? state.calendar.deleteConfirmation
     : null;
-  applyDeleteButtonState(elements.calendarDeleteBlock, pendingDelete, {
-    idleText: "刪除",
-    idleLabel: "刪除行事曆安排",
-    confirmText: "確定刪除？",
-    confirmLabel: "確定刪除行事曆安排",
-    deletingLabel: "刪除中",
-  });
+  refreshCalendarDeleteButton(pendingDelete);
   const dateEditing = Boolean(selectedBlock && !preview && !state.calendar.drag && !isSmallCalendarScreen());
   elements.calendarDateEdit.hidden = !dateEditing;
   if (dateEditing) {
@@ -2166,9 +2192,10 @@ async function deleteResource(documentData) {
   if (!documentId) return;
   const pending = state.resources.deleteConfirmations.get(documentId);
   if (!pending) {
-    state.resources.deleteConfirmations.set(documentId, { phase: "confirm", timer: null, uiTimer: null });
+    const nextPending = { phase: "confirm", timer: null, uiTimer: null };
+    state.resources.deleteConfirmations.set(documentId, nextPending);
     showNotice("請再按一次「確定刪除？」確認刪除正式文件。");
-    renderResources();
+    refreshResourceDeleteButton(documentId, nextPending);
     return;
   }
   if (pending.phase === "confirm") {
@@ -2180,6 +2207,19 @@ async function deleteResource(documentData) {
   }
 }
 
+function refreshResourceDeleteButton(documentId, pending = state.resources.deleteConfirmations.get(String(documentId)) || null) {
+  const button = document.querySelector(
+    `button[data-resource-delete-id="${CSS.escape(String(documentId))}"]`,
+  );
+  applyDeleteButtonState(button, pending, {
+    idleText: "刪除",
+    idleLabel: "刪除正式文件",
+    confirmText: "確定刪除？",
+    confirmLabel: "確定刪除正式文件",
+    deletingLabel: "刪除中",
+  });
+}
+
 function startResourceDeleteCountdown(documentData) {
   const documentId = String(documentData.id || "");
   if (!documentId) return;
@@ -2187,21 +2227,9 @@ function startResourceDeleteCountdown(documentData) {
   const pending = { phase: "countdown", timer: null, uiTimer: null };
   state.resources.deleteConfirmations.set(documentId, pending);
   showNotice(`刪除倒數 ${DELETE_COUNTDOWN_SECONDS} 秒；期間再按同一按鈕可取消。`);
-  renderResources();
   startDeleteCountdown(
     pending,
-    () => {
-      const button = document.querySelector(
-        `button[data-resource-delete-id="${CSS.escape(documentId)}"]`,
-      );
-      applyDeleteButtonState(button, pending, {
-        idleText: "刪除",
-        idleLabel: "刪除正式文件",
-        confirmText: "確定刪除？",
-        confirmLabel: "確定刪除正式文件",
-        deletingLabel: "刪除中",
-      });
-    },
+    () => refreshResourceDeleteButton(documentId, pending),
     () => performResourceDeletion(documentData, pending),
   );
 }
@@ -2212,7 +2240,8 @@ function cancelResourceDeleteConfirmation(documentId, showMessage = false) {
   state.resources.deleteConfirmations.delete(String(documentId));
   if (showMessage) {
     showNotice("已取消刪除，資料保留。");
-    renderResources();
+    refreshResourceDeleteButton(documentId, null);
+    flushDeferredRender();
   }
 }
 
