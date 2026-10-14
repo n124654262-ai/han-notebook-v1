@@ -97,3 +97,4 @@
     app.auth().onAuthStateChanged(startSync);
   } else { message("目前無法連線同步，資料只會保留在此裝置。", true); render(); }
 })();
+

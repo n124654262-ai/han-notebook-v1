@@ -974,6 +974,17 @@ button:focus-visible {
   white-space: nowrap;
 }
 
+.text-button.is-confirming {
+  border-color: #7c2525;
+  color: #ffffff;
+  background: #7c2525;
+}
+
+.text-button:disabled {
+  cursor: wait;
+  opacity: 0.7;
+}
+
 .calendar-assignment h3 {
   margin: 0;
   padding: 9px 14px 6px;

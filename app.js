@@ -1,6 +1,7 @@
 "use strict";
 
 const DRAFT_PREFIX = "han-notebook-note:";
+const DELETE_COUNTDOWN_SECONDS = 3;
 const currentMonth = new Date().toISOString().slice(0, 7);
 // 2028 先放主要節日；官方補班表公布後再更新。
 const NATIONAL_HOLIDAYS = {
@@ -36,6 +37,7 @@ const state = {
     availableItems: [],
     selectedItemId: null,
     selectedBlockId: null,
+    deleteConfirmation: null,
     drag: null,
     swipeStart: null,
   },
@@ -608,6 +610,10 @@ async function loadCalendar() {
     const data = await api(`/api/calendar?month=${encodeURIComponent(state.calendar.month)}`);
     state.calendar.blocks = data.blocks;
     state.calendar.availableItems = data.available_items;
+    if (state.calendar.deleteConfirmation
+      && !state.calendar.blocks.some((block) => block.id === state.calendar.deleteConfirmation.blockId)) {
+      cancelCalendarDeleteConfirmation();
+    }
     setConnection(true, "已連線");
     render();
   } catch (error) {
@@ -659,6 +665,10 @@ function renderList() {
   if (state.view === "archive") {
     const visibleIds = new Set(items.map((item) => item.id));
     state.archiveSelectedIds = new Set([...state.archiveSelectedIds].filter((id) => visibleIds.has(id)));
+    if (state.archiveDeleteConfirmation
+      && state.archiveDeleteConfirmation.ids.some((id) => !visibleIds.has(id))) {
+      cancelArchiveDeleteConfirmation();
+    }
   } else {
     state.archiveSelectedIds.clear();
   }
@@ -674,8 +684,8 @@ function renderList() {
     selectAll.className = "archive-selection-button";
     selectAll.textContent = "全選";
     selectAll.addEventListener("click", () => {
+      cancelArchiveDeleteConfirmation();
       state.archiveSelectedIds = new Set(items.map((item) => item.id));
-      state.archiveDeleteConfirmation = null;
       renderList();
     });
     const clearSelection = document.createElement("button");
@@ -684,20 +694,32 @@ function renderList() {
     clearSelection.textContent = "清除選取";
     clearSelection.disabled = state.archiveSelectedIds.size === 0;
     clearSelection.addEventListener("click", () => {
+      cancelArchiveDeleteConfirmation();
       state.archiveSelectedIds.clear();
-      state.archiveDeleteConfirmation = null;
       renderList();
     });
     const button = document.createElement("button");
     button.type = "button";
     button.className = "danger-button";
-    const confirming = state.archiveDeleteConfirmation
+    const pendingDelete = state.archiveDeleteConfirmation
       && state.archiveDeleteConfirmation.ids.join("\u0000") === [...state.archiveSelectedIds].join("\u0000")
-      && state.archiveDeleteConfirmation.expiresAt > Date.now();
-    button.textContent = confirming ? "確認刪除" : "批次刪除";
-    button.setAttribute("aria-label", confirming ? "確認刪除選取的封存資料" : "批次刪除");
-    button.classList.toggle("is-confirming", Boolean(confirming));
-    button.disabled = state.archiveSelectedIds.size === 0;
+      ? state.archiveDeleteConfirmation
+      : null;
+    const confirming = pendingDelete?.phase === "confirm";
+    const countingDown = pendingDelete?.phase === "countdown";
+    const deleting = pendingDelete?.phase === "deleting";
+    button.textContent = deleting
+      ? "刪除中…"
+      : countingDown
+        ? `取消刪除（${pendingDelete.remaining}）`
+        : confirming ? "確定刪除？" : "批次刪除";
+    button.setAttribute("aria-label", deleting
+      ? "刪除中"
+      : countingDown
+        ? `取消刪除（${pendingDelete.remaining}）`
+        : confirming ? "確定刪除" : "批次刪除");
+    button.classList.toggle("is-confirming", Boolean(confirming || countingDown));
+    button.disabled = state.archiveSelectedIds.size === 0 || deleting;
     button.addEventListener("click", () => void deleteSelectedArchiveItems());
     actions.append(count, selectAll, clearSelection, button);
     elements.listSection.append(actions);
@@ -721,9 +743,9 @@ function createItemRow(item) {
     checkbox.setAttribute("aria-label", `選取 ${itemDisplayTitle(item)}`);
     checkbox.addEventListener("click", (event) => event.stopPropagation());
     checkbox.addEventListener("change", () => {
+      cancelArchiveDeleteConfirmation();
       if (checkbox.checked) state.archiveSelectedIds.add(item.id);
       else state.archiveSelectedIds.delete(item.id);
-      state.archiveDeleteConfirmation = null;
       renderList();
     });
     titleRow.append(checkbox);
@@ -1231,16 +1253,57 @@ async function runItemAction(itemId, action, successMessage) {
 async function deleteSelectedArchiveItems() {
   const itemIds = [...state.archiveSelectedIds];
   if (!itemIds.length) return;
-  const now = Date.now();
   const pending = state.archiveDeleteConfirmation;
   const sameSelection = pending && pending.ids.join("\u0000") === itemIds.join("\u0000");
-  if (!sameSelection || pending.expiresAt <= now) {
-    state.archiveDeleteConfirmation = { ids: itemIds, expiresAt: now + 8000 };
-    showNotice(`請在 8 秒內再按一次「確認刪除」，共 ${itemIds.length} 筆；刪除後無法復原。`);
+  if (!sameSelection) {
+    state.archiveDeleteConfirmation = { ids: itemIds, phase: "confirm", remaining: 0, timer: null };
+    showNotice(`請再按一次「確定刪除？」確認刪除 ${itemIds.length} 筆封存資料。`);
     renderList();
     return;
   }
+  if (pending.phase === "confirm") {
+    startArchiveDeleteCountdown(itemIds);
+    return;
+  }
+  if (pending.phase === "countdown") {
+    cancelArchiveDeleteConfirmation(true);
+    return;
+  }
+  return;
+}
+
+function startArchiveDeleteCountdown(itemIds) {
+  cancelArchiveDeleteConfirmation();
+  const pending = { ids: [...itemIds], phase: "countdown", remaining: DELETE_COUNTDOWN_SECONDS, timer: null };
+  state.archiveDeleteConfirmation = pending;
+  showNotice(`刪除倒數 ${DELETE_COUNTDOWN_SECONDS} 秒；期間再按同一按鈕可取消。`);
+  renderList();
+  pending.timer = window.setInterval(() => {
+    pending.remaining -= 1;
+    if (pending.remaining > 0) {
+      renderList();
+      return;
+    }
+    window.clearInterval(pending.timer);
+    pending.timer = null;
+    pending.phase = "deleting";
+    renderList();
+    void performArchiveDeletion(pending);
+  }, 1000);
+}
+
+function cancelArchiveDeleteConfirmation(showMessage = false) {
+  const pending = state.archiveDeleteConfirmation;
+  if (pending?.timer) window.clearInterval(pending.timer);
   state.archiveDeleteConfirmation = null;
+  if (showMessage) {
+    showNotice("已取消刪除，資料保留。");
+    renderList();
+  }
+}
+
+async function performArchiveDeletion(pending) {
+  const itemIds = pending.ids;
   try {
     const data = await api("/api/items/batch-delete", {
       method: "POST",
@@ -1255,11 +1318,14 @@ async function deleteSelectedArchiveItems() {
     state.inboxItems = state.inboxItems.filter((item) => !deleted.has(String(item.id)));
     state.todoItems = state.todoItems.filter((item) => !deleted.has(String(item.id)));
     state.archiveItems = state.archiveItems.filter((item) => !deleted.has(String(item.id)));
+    state.archiveDeleteConfirmation = null;
     showNotice(`已刪除 ${deletedIds.length} 筆封存資料`);
     render();
     await loadItems({ keepExpanded: false });
   } catch (error) {
+    state.archiveDeleteConfirmation = null;
     showNotice(`批次刪除失敗：${error.message}`, true);
+    renderList();
   }
 }
 
@@ -1335,14 +1401,75 @@ async function deleteSelectedCalendarBlock() {
   if (isSmallCalendarScreen()) return;
   const block = state.calendar.blocks.find((candidate) => candidate.id === state.calendar.selectedBlockId);
   if (!block) return;
-  if (!window.confirm(`確定刪除「${calendarBlockTitle(block)}」的行事曆安排嗎？`)) return;
+  const pending = state.calendar.deleteConfirmation;
+  const sameBlock = pending && pending.blockId === block.id;
+  if (!sameBlock) {
+    state.calendar.deleteConfirmation = { blockId: block.id, phase: "confirm", remaining: 0, timer: null };
+    showNotice(`請再按一次「確定刪除？」刪除「${calendarBlockTitle(block)}」。`);
+    renderCalendar();
+    return;
+  }
+  if (pending.phase === "confirm") {
+    startCalendarDeleteCountdown(block);
+    return;
+  }
+  if (pending.phase === "countdown") {
+    cancelCalendarDeleteConfirmation(true);
+    return;
+  }
+  return;
+}
+
+function startCalendarDeleteCountdown(block) {
+  cancelCalendarDeleteConfirmation();
+  const pending = { blockId: block.id, phase: "countdown", remaining: DELETE_COUNTDOWN_SECONDS, timer: null };
+  state.calendar.deleteConfirmation = pending;
+  showNotice(`刪除倒數 ${DELETE_COUNTDOWN_SECONDS} 秒；期間再按同一按鈕可取消。`);
+  renderCalendar();
+  pending.timer = window.setInterval(() => {
+    pending.remaining -= 1;
+    if (pending.remaining > 0) {
+      renderCalendar();
+      return;
+    }
+    window.clearInterval(pending.timer);
+    pending.timer = null;
+    pending.phase = "deleting";
+    renderCalendar();
+    void performCalendarDeletion(block, pending);
+  }, 1000);
+}
+
+function cancelCalendarDeleteConfirmation(showMessage = false) {
+  const pending = state.calendar.deleteConfirmation;
+  if (pending?.timer) window.clearInterval(pending.timer);
+  state.calendar.deleteConfirmation = null;
+  if (showMessage) {
+    showNotice("已取消刪除，資料保留。");
+    renderCalendar();
+  }
+}
+
+function cancelAllDeleteConfirmations() {
+  cancelArchiveDeleteConfirmation();
+  for (const documentId of state.resources.deleteConfirmations.keys()) {
+    cancelResourceDeleteConfirmation(documentId);
+  }
+  cancelCalendarDeleteConfirmation();
+}
+
+async function performCalendarDeletion(block, pending) {
   try {
     await api(`/api/calendar/blocks/${block.id}`, { method: "DELETE" });
+    if (pending.timer) window.clearInterval(pending.timer);
+    state.calendar.deleteConfirmation = null;
     state.calendar.selectedBlockId = null;
     showNotice("已刪除行事曆安排");
     await loadCalendar();
   } catch (error) {
+    state.calendar.deleteConfirmation = null;
     showNotice(`刪除行事曆安排失敗：${error.message}`, true);
+    renderCalendar();
   }
 }
 
@@ -1357,6 +1484,7 @@ function openSelectedCalendarItem() {
     showNotice("找不到原本的事項", true);
     return;
   }
+  cancelCalendarDeleteConfirmation();
   state.view = item.in_archive ? "archive" : item.in_todo ? "todo" : "inbox";
   state.expandedIds.clear();
   state.expandedIds.add(item.id);
@@ -1507,6 +1635,7 @@ function handleCalendarWheel(event) {
 }
 
 function changeMonth(delta) {
+  cancelCalendarDeleteConfirmation();
   const next = calendarMonthDate();
   next.setMonth(next.getMonth() + delta);
   state.calendar.month = `${next.getFullYear()}-${String(next.getMonth() + 1).padStart(2, "0")}`;
@@ -1547,6 +1676,24 @@ function renderCalendar() {
   }
   elements.calendarOpenItem.hidden = !selectedBlock || Boolean(state.calendar.drag);
   elements.calendarDeleteBlock.hidden = !selectedBlock || Boolean(state.calendar.drag);
+  const pendingDelete = selectedBlock && state.calendar.deleteConfirmation?.blockId === selectedBlock.id
+    ? state.calendar.deleteConfirmation
+    : null;
+  const confirmingDelete = pendingDelete?.phase === "confirm";
+  const countingDownDelete = pendingDelete?.phase === "countdown";
+  const deletingBlock = pendingDelete?.phase === "deleting";
+  elements.calendarDeleteBlock.textContent = deletingBlock
+    ? "刪除中…"
+    : countingDownDelete
+      ? `取消刪除（${pendingDelete.remaining}）`
+      : confirmingDelete ? "確定刪除？" : "刪除";
+  elements.calendarDeleteBlock.setAttribute("aria-label", deletingBlock
+    ? "刪除中"
+    : countingDownDelete
+      ? `取消刪除（${pendingDelete.remaining}）`
+      : confirmingDelete ? "確定刪除行事曆安排" : "刪除行事曆安排");
+  elements.calendarDeleteBlock.classList.toggle("is-confirming", Boolean(confirmingDelete || countingDownDelete));
+  elements.calendarDeleteBlock.disabled = deletingBlock;
   const dateEditing = Boolean(selectedBlock && !preview && !state.calendar.drag && !isSmallCalendarScreen());
   elements.calendarDateEdit.hidden = !dateEditing;
   if (dateEditing) {
@@ -1672,6 +1819,7 @@ function appendCalendarBar(row, block, weekStart, preview) {
   if (!preview) {
     bar.addEventListener("pointerdown", (event) => beginCalendarBlock(event, block));
     bar.addEventListener("click", () => {
+      if (state.calendar.deleteConfirmation?.blockId !== block.id) cancelCalendarDeleteConfirmation();
       state.calendar.selectedBlockId = block.id;
       state.calendar.selectedItemId = null;
       renderCalendar();
@@ -1747,6 +1895,7 @@ function beginCalendarCreate(event, dateValue) {
 
 function beginCalendarBlock(event, block) {
   if (isSmallCalendarScreen()) {
+    if (state.calendar.deleteConfirmation?.blockId !== block.id) cancelCalendarDeleteConfirmation();
     state.calendar.selectedBlockId = block.id;
     state.calendar.selectedItemId = null;
     state.calendar.drag = null;
@@ -1754,6 +1903,7 @@ function beginCalendarBlock(event, block) {
   }
   event.preventDefault();
   event.stopPropagation();
+  if (state.calendar.deleteConfirmation?.blockId !== block.id) cancelCalendarDeleteConfirmation();
   const day = dateFromPoint(event.clientX, event.clientY) || block.start_date;
   const target = event.target;
   const mode = target.classList.contains("left") ? "resize-start"
@@ -1923,11 +2073,22 @@ function createResourceDetails(documentData) {
   const deleteButton = document.createElement("button");
   deleteButton.type = "button";
   deleteButton.className = "danger-button";
-  const expiresAt = state.resources.deleteConfirmations.get(documentData.id) || 0;
-  const confirming = expiresAt > Date.now();
-  deleteButton.textContent = confirming ? "確認刪除" : "刪除";
-  deleteButton.setAttribute("aria-label", confirming ? "確認刪除正式文件" : "刪除正式文件");
-  deleteButton.classList.toggle("is-confirming", confirming);
+  const pendingDelete = state.resources.deleteConfirmations.get(String(documentData.id)) || null;
+  const confirming = pendingDelete?.phase === "confirm";
+  const countingDown = pendingDelete?.phase === "countdown";
+  const deleting = pendingDelete?.phase === "deleting";
+  deleteButton.textContent = deleting
+    ? "刪除中…"
+    : countingDown
+      ? `取消刪除（${pendingDelete.remaining}）`
+      : confirming ? "確定刪除？" : "刪除";
+  deleteButton.setAttribute("aria-label", deleting
+    ? "刪除中"
+    : countingDown
+      ? `取消刪除（${pendingDelete.remaining}）`
+      : confirming ? "確定刪除正式文件" : "刪除正式文件");
+  deleteButton.classList.toggle("is-confirming", Boolean(confirming || countingDown));
+  deleteButton.disabled = deleting;
   deleteButton.addEventListener("click", () => void deleteResource(documentData));
   const save = document.createElement("button");
   save.type = "submit";
@@ -1958,22 +2119,68 @@ function createResourceDetails(documentData) {
 async function deleteResource(documentData) {
   const documentId = String(documentData.id || "");
   if (!documentId) return;
-  const expiresAt = state.resources.deleteConfirmations.get(documentId) || 0;
-  if (expiresAt <= Date.now()) {
-    state.resources.deleteConfirmations.set(documentId, Date.now() + 8000);
-    showNotice("請在 8 秒內再按一次「確認刪除」，刪除後無法復原。");
+  const pending = state.resources.deleteConfirmations.get(documentId);
+  if (!pending) {
+    state.resources.deleteConfirmations.set(documentId, { phase: "confirm", remaining: 0, timer: null });
+    showNotice("請再按一次「確定刪除？」確認刪除正式文件。");
     renderResources();
     return;
   }
-  state.resources.deleteConfirmations.delete(documentId);
+  if (pending.phase === "confirm") {
+    startResourceDeleteCountdown(documentData);
+    return;
+  }
+  if (pending.phase === "countdown") {
+    cancelResourceDeleteConfirmation(documentId, true);
+  }
+}
+
+function startResourceDeleteCountdown(documentData) {
+  const documentId = String(documentData.id || "");
+  if (!documentId) return;
+  cancelResourceDeleteConfirmation(documentId);
+  const pending = { phase: "countdown", remaining: DELETE_COUNTDOWN_SECONDS, timer: null };
+  state.resources.deleteConfirmations.set(documentId, pending);
+  showNotice(`刪除倒數 ${DELETE_COUNTDOWN_SECONDS} 秒；期間再按同一按鈕可取消。`);
+  renderResources();
+  pending.timer = window.setInterval(() => {
+    pending.remaining -= 1;
+    if (pending.remaining > 0) {
+      renderResources();
+      return;
+    }
+    window.clearInterval(pending.timer);
+    pending.timer = null;
+    pending.phase = "deleting";
+    renderResources();
+    void performResourceDeletion(documentData, pending);
+  }, 1000);
+}
+
+function cancelResourceDeleteConfirmation(documentId, showMessage = false) {
+  const pending = state.resources.deleteConfirmations.get(String(documentId));
+  if (pending?.timer) window.clearInterval(pending.timer);
+  state.resources.deleteConfirmations.delete(String(documentId));
+  if (showMessage) {
+    showNotice("已取消刪除，資料保留。");
+    renderResources();
+  }
+}
+
+async function performResourceDeletion(documentData, pending) {
+  const documentId = String(documentData.id || "");
   try {
     await api(`/api/resources/${documentId}`, { method: "DELETE" });
+    if (pending.timer) window.clearInterval(pending.timer);
+    state.resources.deleteConfirmations.delete(documentId);
     state.resources.details.delete(documentId);
     if (state.resources.expandedId === documentId) state.resources.expandedId = null;
     showNotice("已刪除正式文件");
     await loadResources();
   } catch (error) {
+    state.resources.deleteConfirmations.delete(documentId);
     showNotice(`刪除正式文件失敗：${error.message}`, true);
+    renderResources();
   }
 }
 
@@ -2033,6 +2240,7 @@ elements.calendarDeleteBlock.addEventListener("click", () => void deleteSelected
 function closeCalendarSelection() {
   if (state.view !== "calendar" || state.calendar.drag) return;
   if (!state.calendar.selectedItemId && !state.calendar.selectedBlockId) return;
+  cancelCalendarDeleteConfirmation();
   state.calendar.selectedItemId = null;
   state.calendar.selectedBlockId = null;
   renderCalendar();
@@ -2056,6 +2264,7 @@ elements.resourceSearch.addEventListener("input", () => {
 
 for (const tab of elements.tabs) {
   tab.addEventListener("click", () => {
+    cancelAllDeleteConfirmations();
     state.view = tab.dataset.view;
     state.expandedIds.clear();
     if (state.view !== "archive") state.archiveSelectedIds.clear();
@@ -2072,6 +2281,7 @@ for (const tab of elements.tabs) {
 
 document.addEventListener("visibilitychange", () => {
   if (document.visibilityState !== "hidden") return;
+  cancelAllDeleteConfirmations();
   for (const itemId of state.expandedIds) {
     const textarea = document.querySelector(`#notes-${CSS.escape(itemId)}`);
     const status = textarea?.parentElement?.querySelector(".note-status");
