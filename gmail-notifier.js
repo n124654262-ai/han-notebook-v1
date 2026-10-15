@@ -40,8 +40,9 @@
   function setUnreadCount(count) {
     const safeCount = Math.max(0, Number(count) || 0);
     elements.enableButton.classList.toggle("is-count", safeCount > 0);
-    elements.enableButton.textContent = safeCount > 0 ? String(safeCount) : "";
-    elements.enableButton.hidden = safeCount === 0;
+    elements.enableButton.classList.toggle("is-zero", safeCount === 0);
+    elements.enableButton.textContent = String(safeCount);
+    elements.enableButton.hidden = false;
     elements.enableButton.setAttribute("aria-label", `近 5 天未讀信件 ${safeCount} 封`);
     elements.enableButton.title = `近 5 天未讀信件 ${safeCount} 封`;
   }
@@ -50,7 +51,8 @@
     elements.enableButton.hidden = !show;
     if (show) {
       elements.enableButton.classList.remove("is-count");
-      elements.enableButton.textContent = "啟用提醒";
+      elements.enableButton.classList.remove("is-zero");
+      elements.enableButton.textContent = "更新";
       elements.enableButton.removeAttribute("title");
     }
   }
@@ -158,7 +160,6 @@
       markEnabled(true);
       lastCheckedAt = Date.now();
     } catch (error) {
-      setUnreadCount(0);
       showEnableButton(!accessToken || interactive || wasEnabled());
       lastCheckedAt = Date.now();
     } finally {
