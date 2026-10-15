@@ -102,6 +102,39 @@ button {
   text-decoration: none;
 }
 
+.gmail-unread-badge {
+  display: inline-flex;
+  min-width: 19px;
+  height: 19px;
+  margin-left: 4px;
+  padding: 0 5px;
+  align-items: center;
+  justify-content: center;
+  border-radius: 999px;
+  color: #ffffff;
+  background: #c52d2d;
+  font-size: 12px;
+  font-weight: 700;
+  line-height: 1;
+}
+
+.gmail-reminder-button {
+  min-height: 28px;
+  max-width: 210px;
+  padding: 3px 8px;
+  border: 1px solid #b77725;
+  border-radius: 5px;
+  color: #7c4d12;
+  background: #fff8e8;
+  font-size: 12px;
+  cursor: pointer;
+}
+
+.gmail-reminder-button:hover,
+.gmail-reminder-button:focus-visible {
+  background: #ffefc9;
+}
+
 .life-entry-button { display:inline-flex; align-items:center; justify-content:center; min-height:34px; max-width:210px; padding:5px 9px; border:1px solid var(--green); border-radius:5px; color:var(--green-dark); text-decoration:none; background:#ffffff; font-size:13px; white-space:nowrap; }
 .life-entry-button:hover, .life-entry-button:focus-visible { background:#cde9df; }
 
