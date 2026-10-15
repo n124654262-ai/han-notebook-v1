@@ -65,11 +65,10 @@ button {
 
 .header-brand {
   display: flex;
+  align-items: center;
   padding: 5px 0 7px;
   flex: 0 0 auto;
-  flex-direction: column;
-  align-items: flex-start;
-  gap: 2px;
+  gap: 6px;
 }
 
 .header-status {
