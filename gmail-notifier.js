@@ -82,7 +82,33 @@
     return tokenClient;
   }
 
+  async function connectViaFirebase() {
+    if (!globalThis.firebase?.auth) throw new Error("Google 登入元件尚未載入，請重新整理頁面");
+    const primaryApp = firebase.app();
+    const appName = "gmail-readonly";
+    const gmailApp = firebase.apps.find((app) => app.name === appName)
+      || firebase.initializeApp(primaryApp.options, appName);
+    const gmailAuth = gmailApp.auth();
+    const provider = new firebase.auth.GoogleAuthProvider();
+    provider.addScope(GMAIL_SCOPE);
+    provider.setCustomParameters({ login_hint: COMPANY_GMAIL });
+    try {
+      const result = await gmailAuth.signInWithPopup(provider);
+      const credential = firebase.auth.GoogleAuthProvider.credentialFromResult(result);
+      if (!credential?.accessToken) throw new Error("Google 尚未提供 Gmail 讀取授權");
+      accessToken = credential.accessToken;
+      tokenExpiresAt = Date.now() + 55 * 60 * 1000;
+    } finally {
+      await gmailAuth.signOut().catch(() => {});
+    }
+    return accessToken;
+  }
+
   async function requestToken(interactive) {
+    if (!window.google?.accounts?.oauth2) {
+      if (interactive) return connectViaFirebase();
+      throw new Error("Google 授權元件尚未載入");
+    }
     const client = await createTokenClient();
     return new Promise((resolve, reject) => {
       client.callback = (response) => {
