@@ -148,9 +148,15 @@
         }
         reject(new Error(response?.error_description || response?.error || "Google 授權尚未完成"));
       };
-      client.error_callback = (error) => reject(new Error(error?.type === "popup_failed_to_open"
-        ? "瀏覽器擋住授權視窗，請允許彈出視窗後重試"
-        : "Google 授權尚未完成"));
+      client.error_callback = (error) => {
+        if (interactive && error?.type === "popup_failed_to_open") {
+          void connectViaFirebase().then(resolve, reject);
+          return;
+        }
+        reject(new Error(error?.type === "popup_failed_to_open"
+          ? "瀏覽器擋住授權視窗，請允許彈出視窗後重試"
+          : "Google 授權尚未完成"));
+      };
       client.requestAccessToken({
         prompt: interactive ? "consent" : "none",
         login_hint: COMPANY_GMAIL,
