@@ -12,6 +12,7 @@
   };
 
   if (!elements.enableButton) return;
+  elements.enableButton.setAttribute("aria-label", "更新 Gmail 近 5 日未讀數");
 
   let accessToken = "";
   let tokenExpiresAt = 0;
