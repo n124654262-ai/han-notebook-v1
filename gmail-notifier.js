@@ -16,7 +16,7 @@
   let accessToken = "";
   let tokenExpiresAt = 0;
   let tokenClient = null;
-  let loading = false;
+  let activeRequest = null;
   let lastCheckedAt = 0;
 
   function waitForGoogleIdentity() {
@@ -210,8 +210,9 @@
   }
 
   async function refreshUnreadCount({ interactive = false } = {}) {
-    if (loading) return;
-    loading = true;
+    if (activeRequest && (!interactive || activeRequest.interactive)) return;
+    const request = { interactive };
+    activeRequest = request;
     if (interactive) {
       elements.enableButton.disabled = true;
       elements.enableButton.setAttribute("aria-busy", "true");
@@ -222,17 +223,20 @@
       if (interactive) await requestToken(true);
       else if (!accessToken || tokenExpiresAt <= Date.now() + 5000) await requestToken(false);
       await verifyCompanyAccount();
-      setUnreadCount(await countUnreadMessages());
+      const unreadCount = await countUnreadMessages();
+      if (activeRequest !== request) return;
+      setUnreadCount(unreadCount);
       markEnabled(true);
       lastCheckedAt = Date.now();
     } catch (error) {
+      if (activeRequest !== request) return;
       showEnableButton(!accessToken || interactive || wasEnabled());
       if (interactive && typeof showNotice === "function") {
         showNotice(`Gmail 更新失敗：${error?.message || "請重新按更新"}`, true);
       }
       lastCheckedAt = Date.now();
     } finally {
-      loading = false;
+      if (activeRequest === request) activeRequest = null;
     }
   }
 
