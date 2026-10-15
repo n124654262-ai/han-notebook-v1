@@ -8,11 +8,10 @@
   const ENABLED_KEY = "han-gmail-five-day-reminder-enabled";
 
   const elements = {
-    badge: document.querySelector("#gmailUnreadBadge"),
     enableButton: document.querySelector("#gmailReminderButton"),
   };
 
-  if (!elements.badge || !elements.enableButton) return;
+  if (!elements.enableButton) return;
 
   let accessToken = "";
   let tokenExpiresAt = 0;
@@ -38,15 +37,22 @@
     });
   }
 
-  function setBadge(count) {
+  function setUnreadCount(count) {
     const safeCount = Math.max(0, Number(count) || 0);
-    elements.badge.textContent = safeCount > 99 ? "99+" : String(safeCount);
-    elements.badge.hidden = safeCount === 0;
-    elements.badge.setAttribute("aria-label", `近 5 天未讀信件 ${safeCount} 封`);
+    elements.enableButton.classList.toggle("is-count", safeCount > 0);
+    elements.enableButton.textContent = safeCount > 0 ? String(safeCount) : "";
+    elements.enableButton.hidden = safeCount === 0;
+    elements.enableButton.setAttribute("aria-label", `近 5 天未讀信件 ${safeCount} 封`);
+    elements.enableButton.title = `近 5 天未讀信件 ${safeCount} 封`;
   }
 
   function showEnableButton(show) {
     elements.enableButton.hidden = !show;
+    if (show) {
+      elements.enableButton.classList.remove("is-count");
+      elements.enableButton.textContent = "啟用提醒";
+      elements.enableButton.removeAttribute("title");
+    }
   }
 
   function markEnabled(enabled) {
@@ -148,12 +154,11 @@
       if (interactive) await requestToken(true);
       else if (!accessToken || tokenExpiresAt <= Date.now() + 5000) await requestToken(false);
       await verifyCompanyAccount();
-      setBadge(await countUnreadMessages());
+      setUnreadCount(await countUnreadMessages());
       markEnabled(true);
-      showEnableButton(false);
       lastCheckedAt = Date.now();
     } catch (error) {
-      setBadge(0);
+      setUnreadCount(0);
       showEnableButton(!accessToken || interactive || wasEnabled());
       lastCheckedAt = Date.now();
     } finally {
