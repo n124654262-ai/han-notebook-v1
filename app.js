@@ -18,9 +18,23 @@ const FIREBASE_CONFIG = globalThis.HAN_FIREBASE_CONFIG || {
   appId: "1:341013315221:web:c7a7141d6bec9ff2e7259c",
 };
 const AUTHORIZED_EMAIL = "n124654262@gmail.com";
+const DISPLAY_MODE_KEY = "han-notebook-display-mode";
+
+function readDisplayMode() {
+  try {
+    return localStorage.getItem(DISPLAY_MODE_KEY) === "cards" ? "cards" : "list";
+  } catch {
+    return "list";
+  }
+}
+
+function saveDisplayMode(mode) {
+  try { localStorage.setItem(DISPLAY_MODE_KEY, mode); } catch {}
+}
 
 const state = {
   view: "inbox",
+  displayMode: readDisplayMode(),
   inboxItems: [],
   todoItems: [],
   archiveItems: [],
@@ -62,6 +76,9 @@ const elements = {
   manualForm: document.querySelector("#manualForm"),
   manualCancel: document.querySelector("#manualCancel"),
   notice: document.querySelector("#notice"),
+  main: document.querySelector("main"),
+  viewModeToggle: document.querySelector("#viewModeToggle"),
+  viewModeButtons: [...document.querySelectorAll("[data-view-mode]")],
   listSection: document.querySelector(".list-section"),
   listHeading: document.querySelector("#listHeading"),
   itemList: document.querySelector("#itemList"),
@@ -739,6 +756,12 @@ function render({ force = false, preserveViewport = false } = {}) {
   }
 
   const isListView = state.view === "inbox" || state.view === "todo" || state.view === "archive";
+  const canChangeDisplayMode = isListView || state.view === "resources";
+  elements.viewModeToggle.hidden = !canChangeDisplayMode;
+  elements.main.classList.toggle("is-card-mode", canChangeDisplayMode && state.displayMode === "cards");
+  for (const button of elements.viewModeButtons) {
+    button.setAttribute("aria-pressed", String(button.dataset.viewMode === state.displayMode));
+  }
   elements.manualEntry.hidden = state.view !== "inbox";
   elements.listSection.hidden = !isListView;
   elements.calendarPanel.hidden = state.view !== "calendar";
@@ -2129,7 +2152,12 @@ function renderResources() {
     title.textContent = documentData.document_name;
     title.setAttribute("aria-expanded", String(state.resources.expandedId === documentData.id));
     title.addEventListener("click", () => toggleResource(documentData.id, row));
-    row.append(title);
+    const meta = document.createElement("div");
+    meta.className = "resource-card-meta";
+    meta.textContent = documentData.document_date
+      ? `正式文件 · ${documentData.document_date}`
+      : "正式文件";
+    row.append(title, meta);
     if (state.resources.expandedId === documentData.id) {
       const details = state.resources.details.get(documentData.id);
       if (details) row.append(createResourceDetails(details));
@@ -2349,6 +2377,17 @@ document.addEventListener("keydown", (event) => {
   if (event.key !== "Escape") return;
   closeCalendarSelection();
 });
+
+for (const button of elements.viewModeButtons) {
+  button.addEventListener("click", () => {
+    const mode = button.dataset.viewMode === "cards" ? "cards" : "list";
+    if (state.displayMode === mode) return;
+    state.displayMode = mode;
+    saveDisplayMode(mode);
+    render({ preserveViewport: true });
+  });
+}
+
 elements.resourceSearch.addEventListener("input", () => {
   state.resources.query = elements.resourceSearch.value;
   clearTimeout(elements.resourceSearch.searchTimer);
