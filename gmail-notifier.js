@@ -43,12 +43,16 @@
     elements.enableButton.classList.toggle("is-zero", safeCount === 0);
     elements.enableButton.textContent = String(safeCount);
     elements.enableButton.hidden = false;
+    elements.enableButton.disabled = false;
+    elements.enableButton.removeAttribute("aria-busy");
     elements.enableButton.setAttribute("aria-label", `近 5 天未讀信件 ${safeCount} 封`);
     elements.enableButton.title = `近 5 天未讀信件 ${safeCount} 封`;
   }
 
   function showEnableButton(show) {
     elements.enableButton.hidden = !show;
+    elements.enableButton.disabled = false;
+    elements.enableButton.removeAttribute("aria-busy");
     if (show) {
       elements.enableButton.classList.remove("is-count");
       elements.enableButton.classList.remove("is-zero");
@@ -92,16 +96,40 @@
     const provider = new firebase.auth.GoogleAuthProvider();
     provider.addScope(GMAIL_SCOPE);
     provider.setCustomParameters({ login_hint: COMPANY_GMAIL });
+    let redirecting = false;
     try {
       const result = await gmailAuth.signInWithPopup(provider);
       const credential = firebase.auth.GoogleAuthProvider.credentialFromResult(result);
       if (!credential?.accessToken) throw new Error("Google 尚未提供 Gmail 讀取授權");
       accessToken = credential.accessToken;
       tokenExpiresAt = Date.now() + 55 * 60 * 1000;
+    } catch (error) {
+      if (["auth/popup-blocked", "auth/operation-not-supported-in-this-environment"].includes(error?.code)) {
+        redirecting = true;
+        await gmailAuth.signInWithRedirect(provider);
+        return new Promise(() => {});
+      }
+      throw error;
     } finally {
-      await gmailAuth.signOut().catch(() => {});
+      if (!redirecting) await gmailAuth.signOut().catch(() => {});
     }
     return accessToken;
+  }
+
+  async function completeRedirectSignIn() {
+    if (!globalThis.firebase?.auth) return false;
+    const primaryApp = firebase.app();
+    const appName = "gmail-readonly";
+    const gmailApp = firebase.apps.find((app) => app.name === appName)
+      || firebase.initializeApp(primaryApp.options, appName);
+    const gmailAuth = gmailApp.auth();
+    const result = await gmailAuth.getRedirectResult();
+    const credential = firebase.auth.GoogleAuthProvider.credentialFromResult(result);
+    if (!credential?.accessToken) return false;
+    accessToken = credential.accessToken;
+    tokenExpiresAt = Date.now() + 55 * 60 * 1000;
+    await gmailAuth.signOut().catch(() => {});
+    return true;
   }
 
   async function requestToken(interactive) {
@@ -178,6 +206,12 @@
   async function refreshUnreadCount({ interactive = false } = {}) {
     if (loading) return;
     loading = true;
+    if (interactive) {
+      elements.enableButton.disabled = true;
+      elements.enableButton.setAttribute("aria-busy", "true");
+      elements.enableButton.textContent = "讀取中…";
+      elements.enableButton.title = "正在讀取近 5 天未讀信件";
+    }
     try {
       if (interactive) await requestToken(true);
       else if (!accessToken || tokenExpiresAt <= Date.now() + 5000) await requestToken(false);
@@ -202,6 +236,9 @@
   });
   window.setInterval(() => void refreshUnreadCount(), REFRESH_INTERVAL_MS);
 
-  void refreshUnreadCount();
+  void (async () => {
+    try { await completeRedirectSignIn(); } catch {}
+    await refreshUnreadCount();
+  })();
 })();
 
