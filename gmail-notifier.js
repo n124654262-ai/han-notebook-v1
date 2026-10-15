@@ -96,17 +96,17 @@
     });
   }
 
-  async function gmailRequest(path) {
+  async function gmailRequest(path, retried = false) {
     if (!accessToken || tokenExpiresAt <= Date.now() + 5000) await requestToken(false);
     const response = await fetch(`${GMAIL_API_BASE}${path}`, {
       cache: "no-store",
       headers: { Accept: "application/json", Authorization: `Bearer ${accessToken}` },
     });
-    if (response.status === 401) {
+    if (response.status === 401 && !retried) {
       accessToken = "";
       tokenExpiresAt = 0;
       await requestToken(false);
-      return gmailRequest(path);
+      return gmailRequest(path, true);
     }
     if (!response.ok) throw new Error(`Gmail 讀取失敗（${response.status}）`);
     return response.json();
@@ -123,6 +123,24 @@
     }
   }
 
+  async function countUnreadMessages() {
+    let pageToken = "";
+    let count = 0;
+    do {
+      const params = new URLSearchParams({
+        maxResults: "100",
+        includeSpamTrash: "false",
+        q: "is:unread newer_than:5d",
+      });
+      if (pageToken) params.set("pageToken", pageToken);
+      const result = await gmailRequest(`/messages?${params.toString()}`);
+      count += Array.isArray(result?.messages) ? result.messages.length : 0;
+      pageToken = String(result?.nextPageToken || "");
+      if (count >= 10000) return count;
+    } while (pageToken);
+    return count;
+  }
+
   async function refreshUnreadCount({ interactive = false } = {}) {
     if (loading) return;
     loading = true;
@@ -130,8 +148,7 @@
       if (interactive) await requestToken(true);
       else if (!accessToken || tokenExpiresAt <= Date.now() + 5000) await requestToken(false);
       await verifyCompanyAccount();
-      const result = await gmailRequest("/messages?maxResults=1&includeSpamTrash=false&q=is%3Aunread%20newer_than%3A5d");
-      setBadge(result?.resultSizeEstimate || 0);
+      setBadge(await countUnreadMessages());
       markEnabled(true);
       showEnableButton(false);
       lastCheckedAt = Date.now();
