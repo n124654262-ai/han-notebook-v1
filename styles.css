@@ -456,6 +456,10 @@ button:focus-visible {
   background: #fff8d9;
 }
 
+.item-row.is-external .item-title-row {
+  border-left: 3px solid #e0a09a;
+}
+
 .archive-select {
   flex: 0 0 auto;
   width: 19px;
@@ -1626,10 +1630,55 @@ button:focus-visible {
 }
 
 @media (min-width: 761px) {
+  body {
+    border: 0;
+    background: #f4f7f5;
+  }
+
+  .app-topbar,
   main {
-    max-width: none;
-    padding-right: clamp(16px, 3vw, 48px);
-    padding-left: clamp(16px, 3vw, 48px);
+    width: 100%;
+    max-width: 1320px;
+    margin-right: auto;
+    margin-left: auto;
+    background: #ffffff;
+  }
+
+  .app-topbar {
+    border-right: 1px solid var(--line);
+    border-left: 1px solid var(--line);
+  }
+
+  .app-header {
+    gap: 16px;
+    min-width: 0;
+    padding-right: 24px;
+    padding-left: 24px;
+  }
+
+  .header-brand {
+    min-width: 0;
+  }
+
+  .header-status {
+    flex: 0 1 auto;
+    flex-wrap: wrap;
+    justify-content: flex-end;
+  }
+
+  .header-status > * {
+    flex-shrink: 0;
+  }
+
+  .sync-state {
+    white-space: nowrap;
+  }
+
+  main {
+    padding-right: 24px;
+    padding-left: 24px;
+    border-right: 1px solid var(--line);
+    border-left: 1px solid var(--line);
   }
 
   .calendar-quick-form,
@@ -1639,8 +1688,31 @@ button:focus-visible {
   }
 
   body {
-    border-right: 1px solid var(--line);
-    border-left: 1px solid var(--line);
+    border-right: 0;
+    border-left: 0;
+  }
+}
+
+@media (min-width: 761px) and (max-width: 1199px) {
+  .item-title {
+    flex: 0 1 auto;
+  }
+
+  .item-created-date {
+    margin-left: 0;
+  }
+}
+
+@media (min-width: 1200px) {
+  .item-created-date {
+    flex: 0 0 104px;
+    margin-left: 0;
+    padding-right: 18px;
+    text-align: right;
+  }
+
+  .item-calendar-meta {
+    flex: 0 0 150px;
   }
 }
 
