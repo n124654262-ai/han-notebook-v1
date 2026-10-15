@@ -2129,12 +2129,7 @@ function renderResources() {
     title.textContent = documentData.document_name;
     title.setAttribute("aria-expanded", String(state.resources.expandedId === documentData.id));
     title.addEventListener("click", () => toggleResource(documentData.id, row));
-    const meta = document.createElement("div");
-    meta.className = "resource-card-meta";
-    meta.textContent = documentData.document_date
-      ? `正式文件 · ${documentData.document_date}`
-      : "正式文件";
-    row.append(title, meta);
+    row.append(title);
     if (state.resources.expandedId === documentData.id) {
       const details = state.resources.details.get(documentData.id);
       if (details) row.append(createResourceDetails(details));
