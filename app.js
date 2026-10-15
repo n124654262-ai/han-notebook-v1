@@ -149,6 +149,18 @@ function itemDisplayTitle(item) {
   return fallback || "未命名事項";
 }
 
+function compactDesktopTitle(value) {
+  const text = String(value || "");
+  if (!globalThis.matchMedia?.("(min-width: 761px)").matches) return text;
+  const maxChars = globalThis.matchMedia("(min-width: 1200px)").matches ? 72 : 42;
+  const characters = [...text];
+  if (characters.length <= maxChars) return text;
+  const visibleChars = maxChars - 1;
+  const headCount = Math.ceil(visibleChars / 2);
+  const tailCount = Math.floor(visibleChars / 2);
+  return `${characters.slice(0, headCount).join("")}…${characters.slice(-tailCount).join("")}`;
+}
+
 function normalizedRemoteId(value) {
   if (value && typeof value === "object") {
     return String(value.id || value.path || value._key?.path?.segments?.at(-1) || "");
@@ -832,7 +844,10 @@ function createItemRow(item) {
   title.className = "item-title";
   const titleText = document.createElement("span");
   titleText.className = "item-title-text";
-  titleText.textContent = itemDisplayTitle(item);
+  const fullTitle = itemDisplayTitle(item);
+  titleText.textContent = compactDesktopTitle(fullTitle);
+  title.title = fullTitle;
+  title.setAttribute("aria-label", fullTitle);
   title.append(titleText);
   if (item.is_pinned) {
     const pinned = document.createElement("span");
