@@ -227,6 +227,9 @@
       lastCheckedAt = Date.now();
     } catch (error) {
       showEnableButton(!accessToken || interactive || wasEnabled());
+      if (interactive && typeof showNotice === "function") {
+        showNotice(`Gmail 更新失敗：${error?.message || "請重新按更新"}`, true);
+      }
       lastCheckedAt = Date.now();
     } finally {
       loading = false;
