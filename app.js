@@ -2403,6 +2403,7 @@ if (!initializeFirebase()) void loadItems();
   const GMAIL_SCOPE = "https://www.googleapis.com/auth/gmail.readonly";
   const GMAIL_API_BASE = "https://gmail.googleapis.com/gmail/v1/users/me";
   const REFRESH_INTERVAL_MS = 60 * 60 * 1000;
+  const INTERACTIVE_TIMEOUT_MS = 20000;
   const ENABLED_KEY = "han-gmail-five-day-reminder-enabled";
 
   const elements = {
@@ -2469,6 +2470,16 @@ if (!initializeFirebase()) void loadItems();
 
   function wasEnabled() {
     try { return localStorage.getItem(ENABLED_KEY) === "1"; } catch { return false; }
+  }
+
+  function withTimeout(promise, timeoutMs, message) {
+    let timer = 0;
+    return Promise.race([
+      promise,
+      new Promise((_, reject) => {
+        timer = window.setTimeout(() => reject(new Error(message)), timeoutMs);
+      }),
+    ]).finally(() => window.clearTimeout(timer));
   }
 
   async function createTokenClient() {
@@ -2619,7 +2630,13 @@ if (!initializeFirebase()) void loadItems();
       elements.enableButton.title = "正在讀取近 5 天未讀信件";
     }
     try {
-      if (interactive) await requestToken(true);
+      if (interactive) {
+        await withTimeout(
+          requestToken(true),
+          INTERACTIVE_TIMEOUT_MS,
+          "授權視窗沒有完成，請允許 Google 視窗後再按更新",
+        );
+      }
       else if (!accessToken || tokenExpiresAt <= Date.now() + 5000) await requestToken(false);
       await verifyCompanyAccount();
       const unreadCount = await countUnreadMessages();
