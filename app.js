@@ -2446,7 +2446,22 @@ if (!initializeFirebase()) void loadItems();
   const ENABLED_KEY = "han-gmail-five-day-reminder-enabled";
 
   const elements = {
+    openButton: document.querySelector("#gmailOpenButton"),
     enableButton: document.querySelector("#gmailReminderButton"),
+    panel: document.querySelector("#gmailPanel"),
+    panelClose: document.querySelector("#gmailPanelClose"),
+    panelStatus: document.querySelector("#gmailPanelStatus"),
+    panelUnread: document.querySelector("#gmailPanelUnread"),
+    panelRefresh: document.querySelector("#gmailPanelRefresh"),
+    panelList: document.querySelector("#gmailPanelList"),
+    panelEmpty: document.querySelector("#gmailPanelEmpty"),
+    panelError: document.querySelector("#gmailPanelError"),
+    panelMessage: document.querySelector("#gmailPanelMessage"),
+    panelBack: document.querySelector("#gmailPanelBack"),
+    panelMessageSubject: document.querySelector("#gmailPanelMessageSubject"),
+    panelMessageFrom: document.querySelector("#gmailPanelMessageFrom"),
+    panelMessageDate: document.querySelector("#gmailPanelMessageDate"),
+    panelMessageBody: document.querySelector("#gmailPanelMessageBody"),
   };
 
   if (!elements.enableButton) return;
@@ -2457,6 +2472,8 @@ if (!initializeFirebase()) void loadItems();
   let tokenClient = null;
   let activeRequest = null;
   let lastCheckedAt = 0;
+  let panelMessages = [];
+  let panelLoading = false;
 
   function waitForGoogleIdentity() {
     return new Promise((resolve, reject) => {
@@ -2640,6 +2657,206 @@ if (!initializeFirebase()) void loadItems();
     }
   }
 
+  function setPanelStatus(message, isError = false) {
+    if (!elements.panelStatus) return;
+    elements.panelStatus.textContent = message;
+    elements.panelStatus.classList.toggle("is-error", isError);
+  }
+
+  function setPanelError(message = "") {
+    if (!elements.panelError) return;
+    elements.panelError.textContent = message;
+    elements.panelError.hidden = !message;
+  }
+
+  function decodeBase64Url(value) {
+    if (!value) return "";
+    try {
+      const normalized = String(value).replace(/-/g, "+").replace(/_/g, "/");
+      const binary = atob(normalized.padEnd(Math.ceil(normalized.length / 4) * 4, "="));
+      const bytes = Uint8Array.from(binary, (character) => character.charCodeAt(0));
+      return new TextDecoder("utf-8").decode(bytes);
+    } catch {
+      return "";
+    }
+  }
+
+  function messageHeader(message, name) {
+    const header = (message?.payload?.headers || []).find((item) => String(item.name || "").toLowerCase() === name.toLowerCase());
+    return String(header?.value || "").trim();
+  }
+
+  function messageBodyData(payload) {
+    let htmlFallback = "";
+    function visit(part) {
+      if (!part) return "";
+      const mimeType = String(part.mimeType || "").toLowerCase();
+      if (mimeType === "text/plain" && part.body?.data) return part.body.data;
+      if (mimeType === "text/html" && part.body?.data && !htmlFallback) htmlFallback = part.body.data;
+      for (const child of part.parts || []) {
+        const result = visit(child);
+        if (result) return result;
+      }
+      return "";
+    }
+    const plain = visit(payload);
+    return plain || htmlFallback;
+  }
+
+  function messageBodyText(message) {
+    const bodyData = messageBodyData(message?.payload);
+    const decoded = decodeBase64Url(bodyData);
+    if (!decoded) return String(message?.snippet || "").trim();
+    if (String(message?.payload?.mimeType || "").toLowerCase() === "text/html") {
+      const parsed = new DOMParser().parseFromString(decoded, "text/html");
+      return String(parsed.body?.textContent || "").trim();
+    }
+    return decoded.trim();
+  }
+
+  function formatPanelDate(value) {
+    const date = new Date(value || "");
+    if (Number.isNaN(date.getTime())) return String(value || "");
+    return new Intl.DateTimeFormat("zh-TW", {
+      month: "numeric",
+      day: "numeric",
+      hour: "2-digit",
+      minute: "2-digit",
+    }).format(date);
+  }
+
+  function panelMessageSummary(message) {
+    return {
+      id: String(message?.id || ""),
+      subject: messageHeader(message, "Subject") || "（無主旨）",
+      from: messageHeader(message, "From") || "未知寄件者",
+      date: messageHeader(message, "Date"),
+      snippet: String(message?.snippet || "").trim(),
+    };
+  }
+
+  function showPanelList() {
+    elements.panelList.hidden = false;
+    elements.panelMessage.hidden = true;
+    elements.panelEmpty.hidden = panelMessages.length !== 0;
+  }
+
+  function renderPanelMessages() {
+    elements.panelList.replaceChildren();
+    showPanelList();
+    for (const message of panelMessages) {
+      const button = document.createElement("button");
+      button.type = "button";
+      button.className = "gmail-panel-row";
+      const subject = document.createElement("strong");
+      subject.textContent = message.subject;
+      const from = document.createElement("span");
+      from.textContent = message.from;
+      const date = document.createElement("span");
+      date.textContent = formatPanelDate(message.date);
+      const snippet = document.createElement("small");
+      snippet.textContent = message.snippet || "點選查看內容";
+      button.append(subject, from, date, snippet);
+      button.addEventListener("click", () => void openPanelMessage(message));
+      elements.panelList.append(button);
+    }
+  }
+
+  async function openPanelMessage(message) {
+    elements.panelList.hidden = true;
+    elements.panelEmpty.hidden = true;
+    elements.panelError.hidden = true;
+    elements.panelMessage.hidden = false;
+    elements.panelMessageSubject.textContent = message.subject;
+    elements.panelMessageFrom.textContent = message.from;
+    elements.panelMessageDate.textContent = formatPanelDate(message.date);
+    elements.panelMessageBody.textContent = message.snippet || "讀取信件內容中…";
+    setPanelStatus("讀取信件內容中…");
+    try {
+      const detail = await gmailRequest(`/messages/${encodeURIComponent(message.id)}?format=full`);
+      elements.panelMessageSubject.textContent = messageHeader(detail, "Subject") || message.subject;
+      elements.panelMessageFrom.textContent = messageHeader(detail, "From") || message.from;
+      elements.panelMessageDate.textContent = formatPanelDate(messageHeader(detail, "Date") || message.date);
+      elements.panelMessageBody.textContent = messageBodyText(detail) || "這封信沒有可顯示的文字內容。";
+      setPanelStatus("已讀取信件");
+    } catch (error) {
+      setPanelStatus("信件內容讀取失敗", true);
+      setPanelError(error?.message || "請稍後再試");
+    }
+  }
+
+  async function loadPanelMessages({ interactive = false } = {}) {
+    if (!elements.panel || panelLoading) return;
+    panelLoading = true;
+    elements.panelRefresh.disabled = true;
+    elements.panelList.hidden = false;
+    elements.panelMessage.hidden = true;
+    elements.panelEmpty.hidden = true;
+    setPanelError();
+    setPanelStatus("讀取近 5 日未讀信件…");
+    elements.panelList.replaceChildren();
+    try {
+      if (interactive) {
+        await withTimeout(
+          requestToken(true),
+          INTERACTIVE_TIMEOUT_MS,
+          "授權視窗沒有完成，請允許 Google 視窗後再按更新",
+        );
+      } else if (!accessToken || tokenExpiresAt <= Date.now() + 5000) {
+        await requestToken(false);
+      }
+      await verifyCompanyAccount();
+      const params = new URLSearchParams({
+        maxResults: "20",
+        includeSpamTrash: "false",
+        q: "is:unread newer_than:5d",
+      });
+      const [unreadCount, list] = await Promise.all([
+        countUnreadMessages(),
+        gmailRequest(`/messages?${params.toString()}`),
+      ]);
+      setUnreadCount(unreadCount);
+      elements.panelUnread.textContent = `近 5 日未讀：${unreadCount} 封`;
+      const summaries = (list?.messages || []).map(panelMessageSummary);
+      panelMessages = await Promise.all(summaries.map(async (summary) => {
+        try {
+          const detailParams = new URLSearchParams({
+            format: "metadata",
+            metadataHeaders: "From",
+          });
+          detailParams.append("metadataHeaders", "Subject");
+          detailParams.append("metadataHeaders", "Date");
+          const detail = await gmailRequest(`/messages/${encodeURIComponent(summary.id)}?${detailParams.toString()}`);
+          return { ...summary, ...panelMessageSummary(detail) };
+        } catch {
+          return summary;
+        }
+      }));
+      renderPanelMessages();
+      setPanelStatus(panelMessages.length ? `顯示 ${panelMessages.length} 封未讀信件` : "近 5 日沒有未讀信件");
+    } catch (error) {
+      panelMessages = [];
+      elements.panelList.replaceChildren();
+      elements.panelEmpty.hidden = true;
+      setPanelStatus("Gmail 讀取失敗", true);
+      setPanelError(error?.message || "請重新按更新");
+    } finally {
+      panelLoading = false;
+      elements.panelRefresh.disabled = false;
+    }
+  }
+
+  function closeGmailPanel() {
+    elements.panel.hidden = true;
+    elements.openButton?.setAttribute("aria-expanded", "false");
+  }
+
+  function openGmailPanel() {
+    elements.panel.hidden = false;
+    elements.openButton?.setAttribute("aria-expanded", "true");
+    void loadPanelMessages({ interactive: !accessToken || tokenExpiresAt <= Date.now() + 5000 });
+  }
+
   async function countUnreadMessages() {
     let pageToken = "";
     let count = 0;
@@ -2695,6 +2912,13 @@ if (!initializeFirebase()) void loadItems();
     }
   }
 
+  elements.openButton?.addEventListener("click", openGmailPanel);
+  elements.panelClose?.addEventListener("click", closeGmailPanel);
+  elements.panelRefresh?.addEventListener("click", () => void loadPanelMessages({ interactive: true }));
+  elements.panelBack?.addEventListener("click", showPanelList);
+  document.addEventListener("keydown", (event) => {
+    if (event.key === "Escape" && elements.panel && !elements.panel.hidden) closeGmailPanel();
+  });
   elements.enableButton.addEventListener("click", () => void refreshUnreadCount({ interactive: true }));
   document.addEventListener("visibilitychange", () => {
     if (!document.hidden && Date.now() - lastCheckedAt > 5 * 60 * 1000) void refreshUnreadCount();
