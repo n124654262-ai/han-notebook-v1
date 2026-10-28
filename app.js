@@ -19,6 +19,7 @@ const FIREBASE_CONFIG = globalThis.HAN_FIREBASE_CONFIG || {
 };
 const AUTHORIZED_EMAIL = "n124654262@gmail.com";
 const DISPLAY_MODE_KEY = "han-notebook-display-mode";
+const DRAG_HINT_KEY = "han-notebook-drag-hint-shown";
 
 function readDisplayMode() {
   try {
@@ -43,6 +44,7 @@ const state = {
   archiveDeleteConfirmation: null,
   renderDeferred: false,
   itemDrag: null,
+  itemOrderUndo: null,
   completeConfirmations: new Set(),
   editingId: null,
   notesEditingIds: new Set(),
@@ -77,6 +79,7 @@ const elements = {
   manualForm: document.querySelector("#manualForm"),
   manualCancel: document.querySelector("#manualCancel"),
   notice: document.querySelector("#notice"),
+  itemOrderUndo: document.querySelector("#itemOrderUndo"),
   main: document.querySelector("main"),
   viewModeToggle: document.querySelector("#viewModeToggle"),
   viewModeButtons: [...document.querySelectorAll("[data-view-mode]")],
@@ -809,7 +812,15 @@ function renderList() {
   } else {
     state.archiveSelectedIds.clear();
   }
-  for (const item of items) elements.itemList.append(createItemRow(item));
+  let addedOtherGroupDivider = false;
+  for (const item of items) {
+    if (!item.is_pinned && !addedOtherGroupDivider && items.some((candidate) => candidate.is_pinned)) {
+      elements.itemList.append(createItemGroupDivider());
+      addedOtherGroupDivider = true;
+    }
+    elements.itemList.append(createItemRow(item));
+  }
+  showDragHintOnce(items);
   elements.listSection.querySelector(".archive-batch-actions")?.remove();
   if (state.view === "archive") {
     const actions = document.createElement("div");
@@ -855,6 +866,24 @@ function renderList() {
     actions.append(count, selectAll, clearSelection, button);
     elements.listSection.append(actions);
   }
+}
+
+function createItemGroupDivider() {
+  const divider = document.createElement("li");
+  divider.className = "item-group-divider";
+  divider.setAttribute("role", "separator");
+  divider.setAttribute("aria-label", "其他項目");
+  divider.textContent = "其他項目";
+  return divider;
+}
+
+function showDragHintOnce(items) {
+  if (!items.length || !elements.notice) return;
+  try {
+    if (localStorage.getItem(DRAG_HINT_KEY)) return;
+    localStorage.setItem(DRAG_HINT_KEY, "1");
+    showNotice("按住左側 ☷ 可調整順序");
+  } catch {}
 }
 
 function createItemRow(item) {
@@ -908,9 +937,8 @@ function createItemRow(item) {
     if (collapsing && state.editingId === item.id) state.editingId = null;
     render();
   });
-  titleRow.append(title);
   const dragHandle = createItemDragHandle(item, row);
-  titleRow.append(dragHandle);
+  titleRow.append(dragHandle, title);
   if (createdDate) {
     const created = document.createElement("span");
     created.className = "item-created-date";
@@ -965,7 +993,7 @@ function createItemDragHandle(item, row) {
   const handle = document.createElement("button");
   handle.type = "button";
   handle.className = "item-drag-handle";
-  handle.textContent = "⋮⋮";
+  handle.textContent = "☷";
   handle.title = "按住拖曳調整順序";
   handle.setAttribute("aria-label", `按住拖曳調整 ${itemDisplayTitle(item)} 的順序`);
   let holdTimer = null;
@@ -977,9 +1005,10 @@ function createItemDragHandle(item, row) {
   const resetDrag = () => {
     clearHold();
     if (state.itemDrag?.itemId === item.id) state.itemDrag = null;
+    handle.classList.remove("is-holding");
     document.body.classList.remove("is-item-reordering");
-    document.querySelectorAll(".item-row.is-dragging, .item-row.is-drop-before, .item-row.is-drop-after")
-      .forEach((element) => element.classList.remove("is-dragging", "is-drop-before", "is-drop-after"));
+    document.querySelectorAll(".item-row.is-holding, .item-row.is-dragging, .item-row.is-drop-before, .item-row.is-drop-after, .item-row.is-drop-blocked")
+      .forEach((element) => element.classList.remove("is-holding", "is-dragging", "is-drop-before", "is-drop-after", "is-drop-blocked"));
   };
   const finishDrag = (event) => {
     const drag = state.itemDrag;
@@ -992,9 +1021,13 @@ function createItemDragHandle(item, row) {
     event.preventDefault();
     const targetId = drag.targetId;
     const insertBefore = drag.insertBefore;
+    const blocked = drag.blocked;
     resetDrag();
     if (targetId && targetId !== item.id) void reorderItems(item.id, targetId, insertBefore);
-    else render({ force: true, preserveViewport: true });
+    else {
+      if (blocked) showNotice("置頂項目與一般項目不能互換");
+      render({ force: true, preserveViewport: true });
+    }
   };
 
   handle.addEventListener("pointerdown", (event) => {
@@ -1010,11 +1043,16 @@ function createItemDragHandle(item, row) {
       startY: event.clientY,
       targetId: null,
       insertBefore: true,
+      blocked: false,
     };
+    handle.classList.add("is-holding");
+    row.classList.add("is-holding");
     holdTimer = window.setTimeout(() => {
       const drag = state.itemDrag;
       if (!drag || drag.itemId !== item.id || drag.pointerId !== event.pointerId) return;
       drag.phase = "dragging";
+      handle.classList.remove("is-holding");
+      row.classList.remove("is-holding");
       row.classList.add("is-dragging");
       document.body.classList.add("is-item-reordering");
       handle.setPointerCapture?.(event.pointerId);
@@ -1040,15 +1078,18 @@ function createItemDragHandle(item, row) {
     if (state.itemDrag?.itemId === item.id && state.itemDrag.phase !== "dragging") resetDrag();
   });
   handle.addEventListener("click", (event) => event.preventDefault());
+  handle.addEventListener("contextmenu", (event) => event.preventDefault());
   return handle;
 }
 
 function updateItemDropTarget(drag, target, clientY) {
-  document.querySelectorAll(".item-row.is-drop-before, .item-row.is-drop-after")
-    .forEach((element) => element.classList.remove("is-drop-before", "is-drop-after"));
+  document.querySelectorAll(".item-row.is-drop-before, .item-row.is-drop-after, .item-row.is-drop-blocked")
+    .forEach((element) => element.classList.remove("is-drop-before", "is-drop-after", "is-drop-blocked"));
   const targetId = target?.dataset.itemId;
   const targetItem = targetId ? itemById(targetId) : null;
-  if (!targetItem || targetId === drag.itemId || Boolean(targetItem.is_pinned) !== drag.pinned) {
+  drag.blocked = Boolean(targetItem && targetId !== drag.itemId && Boolean(targetItem.is_pinned) !== drag.pinned);
+  if (drag.blocked) target.classList.add("is-drop-blocked");
+  if (!targetItem || targetId === drag.itemId || drag.blocked) {
     drag.targetId = null;
     return;
   }
@@ -1081,6 +1122,42 @@ function itemPatchForOrder(item, sortOrder) {
   };
 }
 
+function clearItemOrderUndo() {
+  if (state.itemOrderUndo?.timer) window.clearTimeout(state.itemOrderUndo.timer);
+  state.itemOrderUndo = null;
+  if (elements.itemOrderUndo) elements.itemOrderUndo.hidden = true;
+}
+
+function armItemOrderUndo(view, previousOrders) {
+  clearItemOrderUndo();
+  state.itemOrderUndo = { view, previousOrders };
+  if (elements.itemOrderUndo) {
+    elements.itemOrderUndo.hidden = false;
+    state.itemOrderUndo.timer = window.setTimeout(clearItemOrderUndo, 6000);
+  }
+}
+
+async function undoItemOrder() {
+  const undo = state.itemOrderUndo;
+  if (!undo) return;
+  clearItemOrderUndo();
+  updateLocalItemSortOrders(undo.previousOrders);
+  showNotice("正在復原順序");
+  render({ force: true, preserveViewport: true });
+  try {
+    await Promise.all([...undo.previousOrders.entries()].map(([id, sortOrder]) => {
+      const item = itemById(id);
+      return item
+        ? api(`/api/items/${id}`, { method: "PATCH", body: JSON.stringify(itemPatchForOrder(item, sortOrder)) })
+        : Promise.resolve();
+    }));
+    showNotice("順序已復原");
+  } catch (error) {
+    showNotice(`順序復原失敗：${error.message}`, true);
+    await loadItems({ keepExpanded: true });
+  }
+}
+
 async function reorderItems(itemId, targetId, insertBefore) {
   const items = sortItems(activeItems());
   const source = items.find((item) => String(item.id) === String(itemId));
@@ -1093,12 +1170,14 @@ async function reorderItems(itemId, targetId, insertBefore) {
   const sourceIndex = group.findIndex((item) => String(item.id) === String(itemId));
   const targetIndex = group.findIndex((item) => String(item.id) === String(targetId));
   if (sourceIndex < 0 || targetIndex < 0) return;
+  const previousOrders = new Map(group.map((item) => [String(item.id), itemSortOrder(item)]));
   const [moved] = group.splice(sourceIndex, 1);
   let insertIndex = targetIndex + (insertBefore ? 0 : 1);
   if (sourceIndex < insertIndex) insertIndex -= 1;
   group.splice(insertIndex, 0, moved);
   const orderMap = new Map(group.map((item, index) => [String(item.id), index]));
   updateLocalItemSortOrders(orderMap);
+  armItemOrderUndo(state.view, previousOrders);
   showNotice("順序已調整，正在同步");
   render({ force: true, preserveViewport: true });
   try {
@@ -2487,6 +2566,7 @@ if (manualContentTextarea) {
 }
 
 elements.manualToggle.addEventListener("click", () => setManualForm(elements.manualForm.hidden));
+elements.itemOrderUndo?.addEventListener("click", () => void undoItemOrder());
 elements.manualCancel.addEventListener("click", () => {
   elements.manualForm.reset();
   resetManualTextareaHeight();
