@@ -514,6 +514,10 @@ function initializeFirebase() {
   remote.auth = firebase.auth();
   remote.db = firebase.firestore();
   remote.enabled = true;
+  const localPersistence = firebase.auth.Auth?.Persistence?.LOCAL;
+  const persistenceReady = localPersistence
+    ? remote.auth.setPersistence(localPersistence).catch(() => {})
+    : Promise.resolve();
 if (elements.authButton) elements.authButton.addEventListener("click", async () => {
     if (remote.user) {
       await remote.auth.signOut();
@@ -522,6 +526,7 @@ if (elements.authButton) elements.authButton.addEventListener("click", async () 
     const provider = new firebase.auth.GoogleAuthProvider();
     provider.setCustomParameters({ login_hint: AUTHORIZED_EMAIL });
     try {
+      await persistenceReady;
       await remote.auth.signInWithPopup(provider);
     } catch (error) {
       if (error.code === "auth/popup-blocked" || error.code === "auth/operation-not-supported-in-this-environment") {
@@ -2443,11 +2448,10 @@ if (!initializeFirebase()) void loadItems();
   const GMAIL_API_BASE = "https://gmail.googleapis.com/gmail/v1/users/me";
   const REFRESH_INTERVAL_MS = 60 * 60 * 1000;
   const INTERACTIVE_TIMEOUT_MS = 20000;
-  const ENABLED_KEY = "han-gmail-five-day-reminder-enabled";
 
   const elements = {
     openButton: document.querySelector("#gmailOpenButton"),
-    enableButton: document.querySelector("#gmailReminderButton"),
+    headerUnread: document.querySelector("#gmailHeaderUnread"),
     panel: document.querySelector("#gmailPanel"),
     panelClose: document.querySelector("#gmailPanelClose"),
     panelStatus: document.querySelector("#gmailPanelStatus"),
@@ -2464,8 +2468,7 @@ if (!initializeFirebase()) void loadItems();
     panelMessageBody: document.querySelector("#gmailPanelMessageBody"),
   };
 
-  if (!elements.enableButton) return;
-  elements.enableButton.setAttribute("aria-label", "更新 Gmail 近 5 日未讀數");
+  if (!elements.openButton && !elements.panel && !elements.headerUnread) return;
 
   let accessToken = "";
   let tokenExpiresAt = 0;
@@ -2495,37 +2498,14 @@ if (!initializeFirebase()) void loadItems();
 
   function setUnreadCount(count) {
     const safeCount = Math.max(0, Number(count) || 0);
-    elements.enableButton.classList.toggle("is-count", safeCount > 0);
-    elements.enableButton.classList.toggle("is-zero", safeCount === 0);
-    elements.enableButton.textContent = String(safeCount);
-    elements.enableButton.hidden = false;
-    elements.enableButton.disabled = false;
-    elements.enableButton.removeAttribute("aria-busy");
-    elements.enableButton.setAttribute("aria-label", `近 5 天未讀信件 ${safeCount} 封`);
-    elements.enableButton.title = `近 5 天未讀信件 ${safeCount} 封`;
-  }
-
-  function showEnableButton(show) {
-    elements.enableButton.hidden = !show;
-    elements.enableButton.disabled = false;
-    elements.enableButton.removeAttribute("aria-busy");
-    if (show) {
-      elements.enableButton.classList.remove("is-count");
-      elements.enableButton.classList.remove("is-zero");
-      elements.enableButton.textContent = "更新";
-      elements.enableButton.removeAttribute("title");
+    if (elements.headerUnread) {
+      elements.headerUnread.textContent = String(safeCount);
+      elements.headerUnread.classList.toggle("is-count", safeCount > 0);
+      elements.headerUnread.classList.toggle("is-zero", safeCount === 0);
+      elements.headerUnread.setAttribute("aria-label", `近 5 日未讀信件 ${safeCount} 封`);
     }
-  }
-
-  function markEnabled(enabled) {
-    try {
-      if (enabled) localStorage.setItem(ENABLED_KEY, "1");
-      else localStorage.removeItem(ENABLED_KEY);
-    } catch {}
-  }
-
-  function wasEnabled() {
-    try { return localStorage.getItem(ENABLED_KEY) === "1"; } catch { return false; }
+    elements.openButton?.setAttribute("aria-label", `公司 Gmail，近 5 日未讀信件 ${safeCount} 封`);
+    elements.openButton?.setAttribute("title", `公司 Gmail，近 5 日未讀信件 ${safeCount} 封`);
   }
 
   function withTimeout(promise, timeoutMs, message) {
@@ -2600,8 +2580,12 @@ if (!initializeFirebase()) void loadItems();
 
   async function requestToken(interactive) {
     if (!window.google?.accounts?.oauth2) {
-      if (interactive) return connectViaFirebase();
-      throw new Error("Google 授權元件尚未載入");
+      try {
+        await waitForGoogleIdentity();
+      } catch (error) {
+        if (interactive) return connectViaFirebase();
+        throw error;
+      }
     }
     const client = await createTokenClient();
     return new Promise((resolve, reject) => {
@@ -2654,6 +2638,20 @@ if (!initializeFirebase()) void loadItems();
       accessToken = "";
       tokenExpiresAt = 0;
       throw new Error(`請選擇公司帳號 ${COMPANY_GMAIL}`);
+    }
+  }
+
+  async function ensureGmailAccess(interactive) {
+    if (accessToken && tokenExpiresAt > Date.now() + 5000) return;
+    try {
+      await requestToken(false);
+    } catch (error) {
+      if (!interactive) throw error;
+      await withTimeout(
+        requestToken(true),
+        INTERACTIVE_TIMEOUT_MS,
+        "授權視窗沒有完成，請允許 Google 視窗後再試一次",
+      );
     }
   }
 
@@ -2796,15 +2794,7 @@ if (!initializeFirebase()) void loadItems();
     setPanelStatus("讀取近 5 日未讀信件…");
     elements.panelList.replaceChildren();
     try {
-      if (interactive) {
-        await withTimeout(
-          requestToken(true),
-          INTERACTIVE_TIMEOUT_MS,
-          "授權視窗沒有完成，請允許 Google 視窗後再按更新",
-        );
-      } else if (!accessToken || tokenExpiresAt <= Date.now() + 5000) {
-        await requestToken(false);
-      }
+      await ensureGmailAccess(interactive);
       await verifyCompanyAccount();
       const params = new URLSearchParams({
         maxResults: "20",
@@ -2854,7 +2844,7 @@ if (!initializeFirebase()) void loadItems();
   function openGmailPanel() {
     elements.panel.hidden = false;
     elements.openButton?.setAttribute("aria-expanded", "true");
-    void loadPanelMessages({ interactive: !accessToken || tokenExpiresAt <= Date.now() + 5000 });
+    void loadPanelMessages({ interactive: true });
   }
 
   async function countUnreadMessages() {
@@ -2875,37 +2865,19 @@ if (!initializeFirebase()) void loadItems();
     return count;
   }
 
-  async function refreshUnreadCount({ interactive = false } = {}) {
-    if (activeRequest && (!interactive || activeRequest.interactive)) return;
-    const request = { interactive };
+  async function refreshUnreadCount() {
+    if (activeRequest) return;
+    const request = {};
     activeRequest = request;
-    if (interactive) {
-      elements.enableButton.disabled = true;
-      elements.enableButton.setAttribute("aria-busy", "true");
-      elements.enableButton.textContent = "讀取中…";
-      elements.enableButton.title = "正在讀取近 5 天未讀信件";
-    }
     try {
-      if (interactive) {
-        await withTimeout(
-          requestToken(true),
-          INTERACTIVE_TIMEOUT_MS,
-          "授權視窗沒有完成，請允許 Google 視窗後再按更新",
-        );
-      }
-      else if (!accessToken || tokenExpiresAt <= Date.now() + 5000) await requestToken(false);
+      if (!accessToken || tokenExpiresAt <= Date.now() + 5000) await requestToken(false);
       await verifyCompanyAccount();
       const unreadCount = await countUnreadMessages();
       if (activeRequest !== request) return;
       setUnreadCount(unreadCount);
-      markEnabled(true);
       lastCheckedAt = Date.now();
     } catch (error) {
       if (activeRequest !== request) return;
-      showEnableButton(!accessToken || interactive || wasEnabled());
-      if (interactive && typeof showNotice === "function") {
-        showNotice(`Gmail 更新失敗：${error?.message || "請重新按更新"}`, true);
-      }
       lastCheckedAt = Date.now();
     } finally {
       if (activeRequest === request) activeRequest = null;
@@ -2919,7 +2891,6 @@ if (!initializeFirebase()) void loadItems();
   document.addEventListener("keydown", (event) => {
     if (event.key === "Escape" && elements.panel && !elements.panel.hidden) closeGmailPanel();
   });
-  elements.enableButton.addEventListener("click", () => void refreshUnreadCount({ interactive: true }));
   document.addEventListener("visibilitychange", () => {
     if (!document.hidden && Date.now() - lastCheckedAt > 5 * 60 * 1000) void refreshUnreadCount();
   });
