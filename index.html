@@ -12,7 +12,7 @@
     <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore-compat.js"></script>
     <script src="https://accounts.google.com/gsi/client" defer></script>
     <script src="firebase-config.js"></script>
-    <script src="app.js?v=drag-sort-20261028-v1" defer></script>
+    <script src="app.js?v=drag-sort-20261028-v2" defer></script>
   </head>
   <body>
     <div class="app-topbar">
@@ -142,7 +142,10 @@
       </section>
 
       <section class="list-section" aria-labelledby="listHeading">
-        <h2 id="listHeading">暫存區</h2>
+        <div class="list-heading-row">
+          <h2 id="listHeading">暫存區</h2>
+          <button id="itemOrderUndo" class="item-order-undo" type="button" hidden>復原排序</button>
+        </div>
         <ul id="itemList" class="item-list"></ul>
         <p id="emptyState" class="empty-state" hidden>目前沒有資料</p>
       </section>
