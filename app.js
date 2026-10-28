@@ -2451,7 +2451,7 @@ if (!initializeFirebase()) void loadItems();
 
   const elements = {
     openButton: document.querySelector("#gmailOpenButton"),
-    headerUnread: document.querySelector("#gmailHeaderUnread"),
+    enableButton: document.querySelector("#gmailReminderButton"),
     panel: document.querySelector("#gmailPanel"),
     panelClose: document.querySelector("#gmailPanelClose"),
     panelStatus: document.querySelector("#gmailPanelStatus"),
@@ -2468,7 +2468,8 @@ if (!initializeFirebase()) void loadItems();
     panelMessageBody: document.querySelector("#gmailPanelMessageBody"),
   };
 
-  if (!elements.openButton && !elements.panel && !elements.headerUnread) return;
+  if (!elements.openButton && !elements.panel && !elements.enableButton) return;
+  elements.enableButton?.setAttribute("aria-label", "更新 Gmail 近 5 日未讀數");
 
   let accessToken = "";
   let tokenExpiresAt = 0;
@@ -2498,14 +2499,28 @@ if (!initializeFirebase()) void loadItems();
 
   function setUnreadCount(count) {
     const safeCount = Math.max(0, Number(count) || 0);
-    if (elements.headerUnread) {
-      elements.headerUnread.textContent = String(safeCount);
-      elements.headerUnread.classList.toggle("is-count", safeCount > 0);
-      elements.headerUnread.classList.toggle("is-zero", safeCount === 0);
-      elements.headerUnread.setAttribute("aria-label", `近 5 日未讀信件 ${safeCount} 封`);
+    if (!elements.enableButton) return;
+    elements.enableButton.classList.toggle("is-count", safeCount > 0);
+    elements.enableButton.classList.toggle("is-zero", safeCount === 0);
+    elements.enableButton.textContent = String(safeCount);
+    elements.enableButton.hidden = false;
+    elements.enableButton.disabled = false;
+    elements.enableButton.removeAttribute("aria-busy");
+    elements.enableButton.setAttribute("aria-label", `近 5 天未讀信件 ${safeCount} 封`);
+    elements.enableButton.title = `近 5 天未讀信件 ${safeCount} 封`;
+  }
+
+  function showEnableButton(show) {
+    if (!elements.enableButton) return;
+    elements.enableButton.hidden = !show;
+    elements.enableButton.disabled = false;
+    elements.enableButton.removeAttribute("aria-busy");
+    if (show) {
+      elements.enableButton.classList.remove("is-count");
+      elements.enableButton.classList.remove("is-zero");
+      elements.enableButton.textContent = "更新";
+      elements.enableButton.removeAttribute("title");
     }
-    elements.openButton?.setAttribute("aria-label", `公司 Gmail，近 5 日未讀信件 ${safeCount} 封`);
-    elements.openButton?.setAttribute("title", `公司 Gmail，近 5 日未讀信件 ${safeCount} 封`);
   }
 
   function withTimeout(promise, timeoutMs, message) {
@@ -2865,12 +2880,18 @@ if (!initializeFirebase()) void loadItems();
     return count;
   }
 
-  async function refreshUnreadCount() {
-    if (activeRequest) return;
-    const request = {};
+  async function refreshUnreadCount({ interactive = false } = {}) {
+    if (activeRequest && (!interactive || activeRequest.interactive)) return;
+    const request = { interactive };
     activeRequest = request;
+    if (interactive && elements.enableButton) {
+      elements.enableButton.disabled = true;
+      elements.enableButton.setAttribute("aria-busy", "true");
+      elements.enableButton.textContent = "讀取中…";
+      elements.enableButton.title = "正在讀取近 5 天未讀信件";
+    }
     try {
-      if (!accessToken || tokenExpiresAt <= Date.now() + 5000) await requestToken(false);
+      await ensureGmailAccess(interactive);
       await verifyCompanyAccount();
       const unreadCount = await countUnreadMessages();
       if (activeRequest !== request) return;
@@ -2878,6 +2899,10 @@ if (!initializeFirebase()) void loadItems();
       lastCheckedAt = Date.now();
     } catch (error) {
       if (activeRequest !== request) return;
+      showEnableButton(!accessToken || interactive);
+      if (interactive && typeof showNotice === "function") {
+        showNotice(`Gmail 更新失敗：${error?.message || "請重新按更新"}`, true);
+      }
       lastCheckedAt = Date.now();
     } finally {
       if (activeRequest === request) activeRequest = null;
@@ -2891,6 +2916,7 @@ if (!initializeFirebase()) void loadItems();
   document.addEventListener("keydown", (event) => {
     if (event.key === "Escape" && elements.panel && !elements.panel.hidden) closeGmailPanel();
   });
+  elements.enableButton?.addEventListener("click", () => void refreshUnreadCount({ interactive: true }));
   document.addEventListener("visibilitychange", () => {
     if (!document.hidden && Date.now() - lastCheckedAt > 5 * 60 * 1000) void refreshUnreadCount();
   });
