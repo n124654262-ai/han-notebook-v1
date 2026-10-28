@@ -530,11 +530,7 @@ if (elements.authButton) elements.authButton.addEventListener("click", async () 
       await remote.auth.signInWithPopup(provider);
     } catch (error) {
       if (error.code === "auth/popup-blocked" || error.code === "auth/operation-not-supported-in-this-environment") {
-        try {
-          await remote.auth.signInWithRedirect(provider);
-        } catch (redirectError) {
-          showNotice(`登入失敗：${redirectError.message}`, true);
-        }
+        showNotice("手機瀏覽器擋住登入視窗，請允許彈出視窗後再按一次 n124登入。", true);
       } else if (error.code === "auth/popup-closed-by-user") {
         showNotice("登入視窗被瀏覽器擋住，請允許彈出視窗後再按一次登入。", true);
       } else showNotice(`登入失敗：${error.message}`, true);
@@ -2557,7 +2553,6 @@ if (!initializeFirebase()) void loadItems();
     const provider = new firebase.auth.GoogleAuthProvider();
     provider.addScope(GMAIL_SCOPE);
     provider.setCustomParameters({ login_hint: COMPANY_GMAIL });
-    let redirecting = false;
     try {
       const result = await gmailAuth.signInWithPopup(provider);
       const credential = firebase.auth.GoogleAuthProvider.credentialFromResult(result);
@@ -2566,31 +2561,13 @@ if (!initializeFirebase()) void loadItems();
       tokenExpiresAt = Date.now() + 55 * 60 * 1000;
     } catch (error) {
       if (["auth/popup-blocked", "auth/operation-not-supported-in-this-environment"].includes(error?.code)) {
-        redirecting = true;
-        await gmailAuth.signInWithRedirect(provider);
-        return new Promise(() => {});
+        throw new Error("手機瀏覽器擋住 Gmail 授權視窗，請允許彈出視窗後再試一次");
       }
       throw error;
     } finally {
-      if (!redirecting) await gmailAuth.signOut().catch(() => {});
+      await gmailAuth.signOut().catch(() => {});
     }
     return accessToken;
-  }
-
-  async function completeRedirectSignIn() {
-    if (!globalThis.firebase?.auth) return false;
-    const primaryApp = firebase.app();
-    const appName = "gmail-readonly";
-    const gmailApp = firebase.apps.find((app) => app.name === appName)
-      || firebase.initializeApp(primaryApp.options, appName);
-    const gmailAuth = gmailApp.auth();
-    const result = await gmailAuth.getRedirectResult();
-    const credential = firebase.auth.GoogleAuthProvider.credentialFromResult(result);
-    if (!credential?.accessToken) return false;
-    accessToken = credential.accessToken;
-    tokenExpiresAt = Date.now() + 55 * 60 * 1000;
-    await gmailAuth.signOut().catch(() => {});
-    return true;
   }
 
   async function requestToken(interactive) {
@@ -2925,10 +2902,7 @@ if (!initializeFirebase()) void loadItems();
   });
   window.setInterval(() => void refreshUnreadCount(), REFRESH_INTERVAL_MS);
 
-  void (async () => {
-    try { await completeRedirectSignIn(); } catch {}
-    await refreshUnreadCount();
-  })();
+  void refreshUnreadCount();
 })();
 
 
