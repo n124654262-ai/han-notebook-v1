@@ -42,6 +42,7 @@ const state = {
   archiveSelectedIds: new Set(),
   archiveDeleteConfirmation: null,
   renderDeferred: false,
+  itemDrag: null,
   completeConfirmations: new Set(),
   editingId: null,
   notesEditingIds: new Set(),
@@ -166,6 +167,12 @@ function itemDisplayTitle(item) {
   return fallback || "未命名事項";
 }
 
+function itemSortOrder(item) {
+  if (item?.sort_order === null || item?.sort_order === undefined || item?.sort_order === "") return null;
+  const value = Number(item.sort_order);
+  return Number.isFinite(value) ? value : null;
+}
+
 function compactDesktopTitle(value) {
   const text = String(value || "");
   if (!globalThis.matchMedia?.("(min-width: 761px)").matches) return text;
@@ -203,6 +210,13 @@ function sortItems(items) {
   return [...items].sort((a, b) => {
     const pinnedOrder = Number(Boolean(b.is_pinned)) - Number(Boolean(a.is_pinned));
     if (pinnedOrder !== 0) return pinnedOrder;
+    const aOrder = itemSortOrder(a);
+    const bOrder = itemSortOrder(b);
+    if (aOrder !== null || bOrder !== null) {
+      if (aOrder === null) return 1;
+      if (bOrder === null) return -1;
+      if (aOrder !== bOrder) return aOrder - bOrder;
+    }
     return String(b.created_at).localeCompare(String(a.created_at));
   });
 }
@@ -306,7 +320,7 @@ function attachRemoteListeners() {
           original_message: "員工公開留言", resource_location: submission.resource_location || "",
           my_notes: submission.requested_action ? `需要我做什麼：${submission.requested_action}` : "",
           source_type: "external", is_pinned: false, in_inbox: true, in_todo: false, in_archive: false,
-          note_revision: 0, created_at: submission.created_at || remoteNow(), updated_at: remoteNow(),
+          sort_order: -Date.now(), note_revision: 0, created_at: submission.created_at || remoteNow(), updated_at: remoteNow(),
         };
         const itemRef = remoteCollection("items").doc(item.id);
         itemRef.get().then((existing) => existing.exists ? null : itemRef.set(item))
@@ -348,6 +362,7 @@ async function remoteApi(path, options = {}) {
         my_notes: String(body.my_notes || ""),
         source_type: body.source_type === "line" ? "line" : "manual",
         is_pinned: false,
+        sort_order: -Date.now(),
         in_inbox: true,
         in_todo: false,
         note_revision: 0,
@@ -386,6 +401,9 @@ async function remoteApi(path, options = {}) {
       resource_location: String(body.resource_location || "").trim(),
       ...(Object.prototype.hasOwnProperty.call(body, "is_pinned")
         ? { is_pinned: Boolean(body.is_pinned) }
+        : {}),
+      ...(Object.prototype.hasOwnProperty.call(body, "sort_order")
+        ? { sort_order: itemSortOrder(body) }
         : {}),
       updated_at: now,
     };
@@ -739,7 +757,7 @@ async function loadResources() {
 }
 
 function render({ force = false, preserveViewport = false } = {}) {
-  if (!force && hasActiveDeleteOperation()) {
+  if (!force && (hasActiveDeleteOperation() || state.itemDrag?.phase === "dragging")) {
     state.renderDeferred = true;
     return;
   }
@@ -891,6 +909,8 @@ function createItemRow(item) {
     render();
   });
   titleRow.append(title);
+  const dragHandle = createItemDragHandle(item, row);
+  titleRow.append(dragHandle);
   if (createdDate) {
     const created = document.createElement("span");
     created.className = "item-created-date";
@@ -939,6 +959,158 @@ function createItemRow(item) {
   row.append(titleRow);
   if (state.expandedIds.has(item.id)) row.append(createDetails(item));
   return row;
+}
+
+function createItemDragHandle(item, row) {
+  const handle = document.createElement("button");
+  handle.type = "button";
+  handle.className = "item-drag-handle";
+  handle.textContent = "⋮⋮";
+  handle.title = "按住拖曳調整順序";
+  handle.setAttribute("aria-label", `按住拖曳調整 ${itemDisplayTitle(item)} 的順序`);
+  let holdTimer = null;
+
+  const clearHold = () => {
+    if (holdTimer) window.clearTimeout(holdTimer);
+    holdTimer = null;
+  };
+  const resetDrag = () => {
+    clearHold();
+    if (state.itemDrag?.itemId === item.id) state.itemDrag = null;
+    document.body.classList.remove("is-item-reordering");
+    document.querySelectorAll(".item-row.is-dragging, .item-row.is-drop-before, .item-row.is-drop-after")
+      .forEach((element) => element.classList.remove("is-dragging", "is-drop-before", "is-drop-after"));
+  };
+  const finishDrag = (event) => {
+    const drag = state.itemDrag;
+    if (!drag || drag.itemId !== item.id || drag.pointerId !== event.pointerId) return;
+    clearHold();
+    if (drag.phase === "holding") {
+      resetDrag();
+      return;
+    }
+    event.preventDefault();
+    const targetId = drag.targetId;
+    const insertBefore = drag.insertBefore;
+    resetDrag();
+    if (targetId && targetId !== item.id) void reorderItems(item.id, targetId, insertBefore);
+    else render({ force: true, preserveViewport: true });
+  };
+
+  handle.addEventListener("pointerdown", (event) => {
+    if (event.button !== undefined && event.button !== 0) return;
+    clearHold();
+    state.itemDrag = {
+      phase: "holding",
+      view: state.view,
+      itemId: item.id,
+      pinned: Boolean(item.is_pinned),
+      pointerId: event.pointerId,
+      startX: event.clientX,
+      startY: event.clientY,
+      targetId: null,
+      insertBefore: true,
+    };
+    holdTimer = window.setTimeout(() => {
+      const drag = state.itemDrag;
+      if (!drag || drag.itemId !== item.id || drag.pointerId !== event.pointerId) return;
+      drag.phase = "dragging";
+      row.classList.add("is-dragging");
+      document.body.classList.add("is-item-reordering");
+      handle.setPointerCapture?.(event.pointerId);
+      showNotice('拖曳到想要的位置後放開；置頂項目會固定在上方。');
+    }, 350);
+  });
+  handle.addEventListener("pointermove", (event) => {
+    const drag = state.itemDrag;
+    if (!drag || drag.itemId !== item.id || drag.pointerId !== event.pointerId) return;
+    if (drag.phase === "holding") {
+      const moved = Math.hypot(event.clientX - drag.startX, event.clientY - drag.startY);
+      if (moved > 8) resetDrag();
+      return;
+    }
+    if (drag.phase !== "dragging") return;
+    event.preventDefault();
+    const target = document.elementFromPoint(event.clientX, event.clientY)?.closest(".item-row");
+    updateItemDropTarget(drag, target, event.clientY);
+  });
+  handle.addEventListener("pointerup", finishDrag);
+  handle.addEventListener("pointercancel", resetDrag);
+  handle.addEventListener("lostpointercapture", () => {
+    if (state.itemDrag?.itemId === item.id && state.itemDrag.phase !== "dragging") resetDrag();
+  });
+  handle.addEventListener("click", (event) => event.preventDefault());
+  return handle;
+}
+
+function updateItemDropTarget(drag, target, clientY) {
+  document.querySelectorAll(".item-row.is-drop-before, .item-row.is-drop-after")
+    .forEach((element) => element.classList.remove("is-drop-before", "is-drop-after"));
+  const targetId = target?.dataset.itemId;
+  const targetItem = targetId ? itemById(targetId) : null;
+  if (!targetItem || targetId === drag.itemId || Boolean(targetItem.is_pinned) !== drag.pinned) {
+    drag.targetId = null;
+    return;
+  }
+  drag.targetId = targetId;
+  drag.insertBefore = clientY < target.getBoundingClientRect().top + (target.offsetHeight / 2);
+  target.classList.add(drag.insertBefore ? "is-drop-before" : "is-drop-after");
+}
+
+function updateLocalItemSortOrders(orderMap) {
+  const update = (items) => items.map((item) => {
+    const sortOrder = orderMap.get(String(item.id));
+    return sortOrder === undefined ? item : { ...item, sort_order: sortOrder };
+  });
+  state.inboxItems = update(state.inboxItems);
+  state.todoItems = update(state.todoItems);
+  state.archiveItems = update(state.archiveItems);
+  remote.items = update(remote.items);
+}
+
+function itemPatchForOrder(item, sortOrder) {
+  return {
+    object_name: item.object_name || "",
+    subject: item.subject || "",
+    contact_name: item.contact_name || "",
+    phone: item.phone || "",
+    original_message: item.original_message || "",
+    resource_location: item.resource_location || "",
+    is_pinned: Boolean(item.is_pinned),
+    sort_order: sortOrder,
+  };
+}
+
+async function reorderItems(itemId, targetId, insertBefore) {
+  const items = sortItems(activeItems());
+  const source = items.find((item) => String(item.id) === String(itemId));
+  const target = items.find((item) => String(item.id) === String(targetId));
+  if (!source || !target || Boolean(source.is_pinned) !== Boolean(target.is_pinned)) {
+    render({ force: true, preserveViewport: true });
+    return;
+  }
+  const group = items.filter((item) => Boolean(item.is_pinned) === Boolean(source.is_pinned));
+  const sourceIndex = group.findIndex((item) => String(item.id) === String(itemId));
+  const targetIndex = group.findIndex((item) => String(item.id) === String(targetId));
+  if (sourceIndex < 0 || targetIndex < 0) return;
+  const [moved] = group.splice(sourceIndex, 1);
+  let insertIndex = targetIndex + (insertBefore ? 0 : 1);
+  if (sourceIndex < insertIndex) insertIndex -= 1;
+  group.splice(insertIndex, 0, moved);
+  const orderMap = new Map(group.map((item, index) => [String(item.id), index]));
+  updateLocalItemSortOrders(orderMap);
+  showNotice("順序已調整，正在同步");
+  render({ force: true, preserveViewport: true });
+  try {
+    await Promise.all(group.map((item) => api(`/api/items/${item.id}`, {
+      method: "PATCH",
+      body: JSON.stringify(itemPatchForOrder(item, orderMap.get(String(item.id)))),
+    })));
+    showNotice("順序已同步");
+  } catch (error) {
+    showNotice(`順序同步失敗：${error.message}`, true);
+    await loadItems({ keepExpanded: true });
+  }
 }
 
 function replaceItem(updated) {
