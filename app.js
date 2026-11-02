@@ -1,6 +1,5 @@
 "use strict";
 
-const DRAFT_PREFIX = "han-notebook-note:";
 const DELETE_COUNTDOWN_SECONDS = 3;
 const currentMonth = new Date().toISOString().slice(0, 7);
 // 2028 先放主要節日；官方補班表公布後再更新。
@@ -46,7 +45,6 @@ const state = {
   itemOrderPendingId: null,
   completeConfirmations: new Set(),
   editingId: null,
-  notesEditingIds: new Set(),
   itemEditDrafts: new Map(),
   calendar: {
     month: currentMonth,
@@ -107,8 +105,6 @@ const elements = {
   resourceEmpty: document.querySelector("#resourceEmpty"),
 };
 
-const saveTimers = new Map();
-const savePromises = new Map();
 const VIEWED_EXTERNAL_ITEMS_KEY = "han-notebook-viewed-external-items";
 
 function viewedExternalItemIds() {
@@ -411,26 +407,6 @@ async function remoteApi(path, options = {}) {
     };
     await itemRef.update(updated);
     return { item: { ...remoteDoc(snapshot.data()), id: parts[2], ...updated } };
-  }
-
-  if (parts[1] === "items" && parts.length === 4 && parts[3] === "notes" && method === "PATCH") {
-    const itemRef = remoteCollection("items").doc(parts[2]);
-    let updated;
-    updated = await remote.db.runTransaction(async (transaction) => {
-      const snapshot = await transaction.get(itemRef);
-      if (!snapshot.exists) throw new Error("找不到這筆事情");
-      const current = remoteDoc(snapshot.data());
-      if (Number(current.note_revision || 0) !== Number(body.revision || 0)) {
-        const conflict = new Error("伺服器已有較新的我的紀錄");
-        conflict.status = 409;
-        conflict.item = current;
-        throw conflict;
-      }
-      const next = { ...current, my_notes: String(body.my_notes || ""), note_revision: Number(current.note_revision || 0) + 1, updated_at: now };
-      transaction.update(itemRef, { my_notes: next.my_notes, note_revision: next.note_revision, updated_at: now });
-      return next;
-    });
-    return { item: updated };
   }
 
   if (parts[1] === "items" && parts.length === 4 && method === "POST") {
@@ -1228,15 +1204,12 @@ function createDetails(item) {
     details.append(list);
   }
 
-  const notes = createNotesEditor(item);
   if (editing) {
-    const actions = editForm.querySelector(".form-actions");
-    editForm.insertBefore(notes.wrapper, actions);
     details.append(editForm);
     details.classList.add("is-editing");
     return details;
   }
-  details.append(createItemOrderControls(item), notes.wrapper);
+  details.append(createItemOrderControls(item));
   const actions = document.createElement("div");
   actions.className = "item-actions";
   if (item.in_archive) {
@@ -1245,7 +1218,6 @@ function createDetails(item) {
     }));
   } else actions.append(
     actionButton(item.in_todo ? "已在待辦" : "待辦", item.in_todo, async () => {
-      if (!(await syncNote(item.id, notes.textarea, notes.status))) return;
       await runItemAction(item.id, "todo", "已移到待辦");
     }),
     actionButton("行事曆", false, () => openCalendarFor(item.id)),
@@ -1256,10 +1228,6 @@ function createDetails(item) {
       }
     }),
     actionButton(state.completeConfirmations.has(item.id) ? "再次完成" : "完成", false, async () => {
-      if (!(await syncNote(item.id, notes.textarea, notes.status))) {
-        showNotice("我的紀錄還沒同步，為避免遺失，現在不能完成。", true);
-        return;
-      }
       if (!state.completeConfirmations.has(item.id)) {
         state.completeConfirmations.add(item.id);
         showNotice("再按一次完成，才會移到封存區");
@@ -1268,7 +1236,6 @@ function createDetails(item) {
       }
       state.completeConfirmations.delete(item.id);
       await runItemAction(item.id, "complete", "已完成並移出工作清單");
-      localStorage.removeItem(`${DRAFT_PREFIX}${item.id}`);
     }, "", "complete"),
   );
   details.append(actions);
@@ -1307,88 +1274,6 @@ function createItemOrderControls(item) {
   );
   wrapper.append(label, buttons);
   return wrapper;
-}
-
-function createNotesEditor(item) {
-  const wrapper = document.createElement("div");
-  wrapper.className = "notes-block";
-  const header = document.createElement("div");
-  header.className = "notes-header";
-  const label = document.createElement("span");
-  label.className = "notes-label";
-  label.textContent = "我的紀錄";
-  let draft = readDraft(item.id);
-  if (draft && draft.text === item.my_notes) {
-    localStorage.removeItem(`${DRAFT_PREFIX}${item.id}`);
-    draft = null;
-  }
-  const value = draft ? draft.text : (item.my_notes || "");
-  const editing = state.notesEditingIds.has(item.id);
-  const editButton = document.createElement("button");
-  editButton.type = "button";
-  editButton.className = "notes-edit-toggle";
-  editButton.textContent = editing ? "完成" : "編輯紀錄";
-  editButton.addEventListener("click", () => {
-    if (editing) state.notesEditingIds.delete(item.id);
-    else state.notesEditingIds.add(item.id);
-    render();
-    if (!editing) {
-      requestAnimationFrame(() => document.getElementById(`notes-${item.id}`)?.focus());
-    }
-  });
-  header.append(label, editButton);
-
-  if (!editing) {
-    const display = document.createElement("div");
-    display.className = "my-notes-display";
-    display.textContent = value || "尚無紀錄";
-    display.classList.toggle("is-empty", !value);
-    wrapper.append(header, display);
-    if (draft) {
-      const pending = document.createElement("span");
-      pending.className = "note-status is-warning";
-      pending.textContent = "尚待同步，文字已保存在這支手機";
-      wrapper.append(pending);
-    }
-    return { wrapper, textarea: null, status: null };
-  }
-
-  const textarea = document.createElement("textarea");
-  textarea.id = `notes-${item.id}`;
-  textarea.className = "my-notes";
-  textarea.rows = 3;
-  textarea.maxLength = 20000;
-  textarea.value = value;
-  const status = document.createElement("span");
-  status.className = "note-status";
-  status.textContent = draft ? "已暫存在這支手機，等待同步" : "已同步保存";
-  textarea.addEventListener("input", () => {
-    autoGrowTextarea(textarea);
-    const currentItem = itemById(item.id);
-    if (!currentItem) return;
-    localStorage.setItem(`${DRAFT_PREFIX}${item.id}`, JSON.stringify({
-      text: textarea.value,
-      revision: currentItem.note_revision,
-      savedAt: new Date().toISOString(),
-    }));
-    status.textContent = "已暫存在這支手機";
-    status.classList.remove("is-warning");
-    scheduleNoteSave(item.id, textarea, status);
-  });
-  if (draft) scheduleNoteSave(item.id, textarea, status);
-  wrapper.append(header, textarea, status);
-  const grow = () => {
-    if (textarea.isConnected) autoGrowTextarea(textarea);
-    else requestAnimationFrame(grow);
-  };
-  grow();
-  return { wrapper, textarea, status };
-}
-
-function autoGrowTextarea(textarea) {
-  textarea.style.height = "auto";
-  const lineHeight = Number.parseFloat(getComputedStyle(textarea).lineHeight) || 24;
-  textarea.style.height = `${textarea.scrollHeight + (lineHeight * 2)}px`;
 }
 
 function createOfficialEditor(item) {
@@ -1487,72 +1372,6 @@ function actionButton(text, disabled, handler, title = "", extraClass = "") {
   if (title) button.title = title;
   if (handler) button.addEventListener("click", handler);
   return button;
-}
-
-function readDraft(itemId) {
-  const raw = localStorage.getItem(`${DRAFT_PREFIX}${itemId}`);
-  if (!raw) return null;
-  try {
-    const draft = JSON.parse(raw);
-    if (typeof draft.text !== "string" || !Number.isInteger(draft.revision)) return null;
-    return draft;
-  } catch (_error) {
-    return null;
-  }
-}
-
-function scheduleNoteSave(itemId, textarea, status) {
-  clearTimeout(saveTimers.get(itemId));
-  saveTimers.set(itemId, setTimeout(() => {
-    void syncNote(itemId, textarea, status);
-  }, 650));
-}
-
-async function syncNote(itemId, textarea, status) {
-  if (!textarea && !readDraft(itemId)) return true;
-  clearTimeout(saveTimers.get(itemId));
-  const previous = savePromises.get(itemId) || Promise.resolve(true);
-  const next = previous.then(() => performNoteSave(itemId, textarea, status));
-  savePromises.set(itemId, next.catch(() => false));
-  return next;
-}
-
-async function performNoteSave(itemId, textarea, status) {
-  const draft = readDraft(itemId);
-  if (!draft) return true;
-  const item = itemById(itemId);
-  if (!item) return false;
-  try {
-    const data = await api(`/api/items/${itemId}/notes`, {
-      method: "PATCH",
-      body: JSON.stringify({ my_notes: draft.text, revision: draft.revision }),
-      keepalive: true,
-    });
-    Object.assign(item, data.item);
-    const latestDraft = readDraft(itemId);
-    if (latestDraft && latestDraft.text === draft.text) {
-      localStorage.removeItem(`${DRAFT_PREFIX}${itemId}`);
-      if (status) {
-        status.textContent = "已同步保存";
-        status.classList.remove("is-warning");
-      }
-    } else if (latestDraft) {
-      latestDraft.revision = data.item.note_revision;
-      localStorage.setItem(`${DRAFT_PREFIX}${itemId}`, JSON.stringify(latestDraft));
-      if (textarea) scheduleNoteSave(itemId, textarea, status);
-    }
-    setConnection(true, "已連線");
-    return true;
-  } catch (error) {
-    if (status) {
-      status.classList.add("is-warning");
-      status.textContent = error.status === 409
-        ? "另一個裝置有較新紀錄，本機文字仍保留"
-        : "尚未同步，文字已保存在這支手機";
-    }
-    if (error.status !== 409) setConnection(false, "連線中斷");
-    return false;
-  }
 }
 
 async function runItemAction(itemId, action, successMessage) {
@@ -2621,11 +2440,6 @@ document.addEventListener("visibilitychange", () => {
       reconcileDeleteCountdown(pending);
     }
     return;
-  }
-  for (const itemId of state.expandedIds) {
-    const textarea = document.querySelector(`#notes-${CSS.escape(itemId)}`);
-    const status = textarea?.parentElement?.querySelector(".note-status");
-    if (textarea && readDraft(itemId)) void syncNote(itemId, textarea, status);
   }
 });
 
