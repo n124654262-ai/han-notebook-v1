@@ -19,7 +19,6 @@ const FIREBASE_CONFIG = globalThis.HAN_FIREBASE_CONFIG || {
 };
 const AUTHORIZED_EMAIL = "n124654262@gmail.com";
 const DISPLAY_MODE_KEY = "han-notebook-display-mode";
-const DRAG_HINT_KEY = "han-notebook-drag-hint-shown";
 
 function readDisplayMode() {
   try {
@@ -43,9 +42,8 @@ const state = {
   archiveSelectedIds: new Set(),
   archiveDeleteConfirmation: null,
   renderDeferred: false,
-  itemDrag: null,
   itemOrderUndo: null,
-  suppressItemClickId: null,
+  itemOrderPendingId: null,
   completeConfirmations: new Set(),
   editingId: null,
   notesEditingIds: new Set(),
@@ -761,7 +759,7 @@ async function loadResources() {
 }
 
 function render({ force = false, preserveViewport = false } = {}) {
-  if (!force && (hasActiveDeleteOperation() || state.itemDrag?.phase === "dragging")) {
+  if (!force && hasActiveDeleteOperation()) {
     state.renderDeferred = true;
     return;
   }
@@ -821,7 +819,6 @@ function renderList() {
     }
     elements.itemList.append(createItemRow(item));
   }
-  showDragHintOnce(items);
   elements.listSection.querySelector(".archive-batch-actions")?.remove();
   if (state.view === "archive") {
     const actions = document.createElement("div");
@@ -878,15 +875,6 @@ function createItemGroupDivider() {
   return divider;
 }
 
-function showDragHintOnce(items) {
-  if (!items.length || !elements.notice) return;
-  try {
-    if (localStorage.getItem(DRAG_HINT_KEY)) return;
-    localStorage.setItem(DRAG_HINT_KEY, "1");
-    showNotice("按住項目或左側 ☷ 可調整順序");
-  } catch {}
-}
-
 function createItemRow(item) {
   const row = document.createElement("li");
   row.className = "item-row";
@@ -931,10 +919,6 @@ function createItemRow(item) {
   const createdDate = formatCreatedShortDate(item.created_at);
   title.setAttribute("aria-expanded", String(state.expandedIds.has(item.id)));
   title.addEventListener("click", () => {
-    if (state.suppressItemClickId === String(item.id)) {
-      state.suppressItemClickId = null;
-      return;
-    }
     if (item.source_type === "external") markExternalItemViewed(item.id);
     const collapsing = state.expandedIds.has(item.id);
     if (collapsing) state.expandedIds.delete(item.id);
@@ -942,9 +926,7 @@ function createItemRow(item) {
     if (collapsing && state.editingId === item.id) state.editingId = null;
     render();
   });
-  bindItemDragSource(title, item, row);
-  const dragHandle = createItemDragHandle(item, row);
-  titleRow.append(dragHandle, title);
+  titleRow.append(title);
   if (createdDate) {
     const created = document.createElement("span");
     created.className = "item-created-date";
@@ -995,142 +977,13 @@ function createItemRow(item) {
   return row;
 }
 
-function createItemDragHandle(item, row) {
-  const handle = document.createElement("button");
-  handle.type = "button";
-  handle.className = "item-drag-handle";
-  handle.textContent = "☷";
-  handle.title = "按住拖曳調整順序";
-  handle.setAttribute("aria-label", `按住拖曳調整 ${itemDisplayTitle(item)} 的順序`);
-  handle.setAttribute("aria-keyshortcuts", "Control+ArrowUp Control+ArrowDown");
-  bindItemDragSource(handle, item, row, true);
-  handle.addEventListener("keydown", (event) => {
-    if (event.key === "ArrowUp" || event.key === "ArrowDown") {
-      if (event.ctrlKey || event.metaKey) {
-        event.preventDefault();
-        void moveItemByKeyboard(item.id, event.key === "ArrowUp" ? "up" : "down");
-        return;
-      }
-      event.preventDefault();
-      focusAdjacentItemHandle(item.id, event.key === "ArrowUp" ? "up" : "down");
-    }
-  });
-  return handle;
-}
-
-function bindItemDragSource(source, item, row, isHandle = false) {
-  let holdTimer = null;
-  const clearHold = () => {
-    if (holdTimer) window.clearTimeout(holdTimer);
-    holdTimer = null;
-  };
-  const resetDrag = () => {
-    clearHold();
-    state.itemDrag?.placeholder?.remove();
-    if (state.itemDrag?.itemId === item.id) state.itemDrag = null;
-    document.body.classList.remove("is-item-reordering");
-    document.querySelectorAll(".item-row.is-holding, .item-row.is-dragging, .item-row.is-drop-before, .item-row.is-drop-after, .item-row.is-drop-blocked")
-      .forEach((element) => element.classList.remove("is-holding", "is-dragging", "is-drop-before", "is-drop-after", "is-drop-blocked"));
-  };
-  const finishDrag = (event) => {
-    const drag = state.itemDrag;
-    if (!drag || drag.itemId !== item.id || drag.pointerId !== event.pointerId) return;
-    clearHold();
-    if (drag.phase === "holding") {
-      resetDrag();
-      return;
-    }
-    event.preventDefault();
-    const targetId = drag.targetId;
-    const insertBefore = drag.insertBefore;
-    const blocked = drag.blocked;
-    state.suppressItemClickId = String(item.id);
-    window.setTimeout(() => {
-      if (state.suppressItemClickId === String(item.id)) state.suppressItemClickId = null;
-    }, 400);
-    resetDrag();
-    if (targetId && targetId !== item.id) void reorderItems(item.id, targetId, insertBefore);
-    else {
-      if (blocked) showNotice("置頂項目與一般項目不能互換");
-      render({ force: true, preserveViewport: true });
-    }
-  };
-  source.addEventListener("pointerdown", (event) => {
-    if (event.button !== undefined && event.button !== 0) return;
-    clearHold();
-    state.itemDrag = {
-      phase: "holding",
-      view: state.view,
-      itemId: item.id,
-      pinned: Boolean(item.is_pinned),
-      pointerId: event.pointerId,
-      startX: event.clientX,
-      startY: event.clientY,
-      targetId: null,
-      insertBefore: true,
-      blocked: false,
-      source: isHandle ? "handle" : "title",
-      placeholder: null,
-    };
-    source.classList.add("is-holding");
-    row.classList.add("is-holding");
-    holdTimer = window.setTimeout(() => {
-      const drag = state.itemDrag;
-      if (!drag || drag.itemId !== item.id || drag.pointerId !== event.pointerId) return;
-      drag.phase = "dragging";
-      source.classList.remove("is-holding");
-      row.classList.remove("is-holding");
-      row.classList.add("is-dragging");
-      document.body.classList.add("is-item-reordering");
-      const placeholder = document.createElement("li");
-      placeholder.className = "item-drop-placeholder";
-      placeholder.setAttribute("aria-hidden", "true");
-      placeholder.style.height = `${Math.max(44, row.getBoundingClientRect().height)}px`;
-      row.after(placeholder);
-      drag.placeholder = placeholder;
-      source.setPointerCapture?.(event.pointerId);
-      showNotice("拖曳到想要的位置後放開；置頂項目會固定在上方。");
-    }, 350);
-  });
-  source.addEventListener("pointermove", (event) => {
-    const drag = state.itemDrag;
-    if (!drag || drag.itemId !== item.id || drag.pointerId !== event.pointerId) return;
-    if (drag.phase === "holding") {
-      const moved = Math.hypot(event.clientX - drag.startX, event.clientY - drag.startY);
-      if (moved > 8) resetDrag();
-      return;
-    }
-    if (drag.phase !== "dragging") return;
-    event.preventDefault();
-    const target = document.elementFromPoint(event.clientX, event.clientY)?.closest(".item-row");
-    updateItemDropTarget(drag, target, event.clientY);
-  });
-  source.addEventListener("pointerup", finishDrag);
-  source.addEventListener("pointercancel", resetDrag);
-  source.addEventListener("lostpointercapture", () => {
-    if (state.itemDrag?.itemId === item.id && state.itemDrag.phase !== "dragging") resetDrag();
-  });
-  if (isHandle) {
-    source.addEventListener("click", (event) => event.preventDefault());
-    source.addEventListener("contextmenu", (event) => event.preventDefault());
-  }
-}
-
 function currentItemGroup(itemId) {
   const item = itemById(itemId);
   if (!item) return [];
   return sortItems(activeItems()).filter((candidate) => Boolean(candidate.is_pinned) === Boolean(item.is_pinned));
 }
 
-function focusAdjacentItemHandle(itemId, direction) {
-  const group = currentItemGroup(itemId);
-  const index = group.findIndex((item) => String(item.id) === String(itemId));
-  const next = group[index + (direction === "up" ? -1 : 1)];
-  if (!next) return;
-  document.querySelector(`.item-row[data-item-id="${CSS.escape(String(next.id))}"] .item-drag-handle`)?.focus();
-}
-
-async function moveItemByKeyboard(itemId, direction) {
+async function moveItemByStep(itemId, direction) {
   const group = currentItemGroup(itemId);
   const index = group.findIndex((item) => String(item.id) === String(itemId));
   const target = group[index + (direction === "up" ? -1 : 1)];
@@ -1139,27 +992,6 @@ async function moveItemByKeyboard(itemId, direction) {
     return;
   }
   await reorderItems(itemId, target.id, direction === "up");
-  document.querySelector(`.item-row[data-item-id="${CSS.escape(String(itemId))}"] .item-drag-handle`)?.focus();
-}
-
-function updateItemDropTarget(drag, target, clientY) {
-  document.querySelectorAll(".item-row.is-drop-before, .item-row.is-drop-after, .item-row.is-drop-blocked")
-    .forEach((element) => element.classList.remove("is-drop-before", "is-drop-after", "is-drop-blocked"));
-  const targetId = target?.dataset.itemId;
-  const targetItem = targetId ? itemById(targetId) : null;
-  drag.blocked = Boolean(targetItem && targetId !== drag.itemId && Boolean(targetItem.is_pinned) !== drag.pinned);
-  if (drag.blocked) target.classList.add("is-drop-blocked");
-  if (!targetItem || targetId === drag.itemId || drag.blocked) {
-    drag.targetId = null;
-    return;
-  }
-  drag.targetId = targetId;
-  drag.insertBefore = clientY < target.getBoundingClientRect().top + (target.offsetHeight / 2);
-  if (drag.placeholder && drag.placeholder !== target) {
-    if (drag.insertBefore) target.before(drag.placeholder);
-    else target.after(drag.placeholder);
-  }
-  target.classList.add(drag.insertBefore ? "is-drop-before" : "is-drop-after");
 }
 
 function updateLocalItemSortOrders(orderMap) {
@@ -1202,6 +1034,10 @@ function armItemOrderUndo(view, previousOrders) {
 }
 
 async function undoItemOrder() {
+  if (state.itemOrderPendingId) {
+    showNotice("順序正在同步，請稍候");
+    return;
+  }
   const undo = state.itemOrderUndo;
   if (!undo) return;
   clearItemOrderUndo();
@@ -1223,6 +1059,7 @@ async function undoItemOrder() {
 }
 
 async function reorderItems(itemId, targetId, insertBefore) {
+  if (state.itemOrderPendingId) return;
   const items = sortItems(activeItems());
   const source = items.find((item) => String(item.id) === String(itemId));
   const target = items.find((item) => String(item.id) === String(targetId));
@@ -1241,6 +1078,7 @@ async function reorderItems(itemId, targetId, insertBefore) {
   if (sourceIndex < insertIndex) insertIndex -= 1;
   group.splice(insertIndex, 0, moved);
   const orderMap = new Map(group.map((item, index) => [String(item.id), index]));
+  state.itemOrderPendingId = String(itemId);
   updateLocalItemSortOrders(orderMap);
   armItemOrderUndo(state.view, previousOrders);
   showNotice("順序已調整，正在同步");
@@ -1250,7 +1088,9 @@ async function reorderItems(itemId, targetId, insertBefore) {
       method: "PATCH",
       body: JSON.stringify(itemPatchForOrder(item, orderMap.get(String(item.id)))),
     })));
+    state.itemOrderPendingId = null;
     showNotice("順序已同步");
+    render({ force: true, preserveViewport: true });
   } catch (error) {
     try {
       await Promise.all([...previousOrders.entries()].map(([id, sortOrder]) => {
@@ -1260,6 +1100,7 @@ async function reorderItems(itemId, targetId, insertBefore) {
           : Promise.resolve();
       }));
     } catch {}
+    state.itemOrderPendingId = null;
     clearItemOrderUndo();
     showNotice(`順序同步失敗，已恢復原順序：${error.message}`, true);
     await loadItems({ keepExpanded: true });
@@ -1395,7 +1236,7 @@ function createDetails(item) {
     details.classList.add("is-editing");
     return details;
   }
-  details.append(notes.wrapper);
+  details.append(createItemOrderControls(item), notes.wrapper);
   const actions = document.createElement("div");
   actions.className = "item-actions";
   if (item.in_archive) {
@@ -1430,75 +1271,42 @@ function createDetails(item) {
       localStorage.removeItem(`${DRAFT_PREFIX}${item.id}`);
     }, "", "complete"),
   );
-  details.append(actions, createItemOrderMenu(item));
+  details.append(actions);
   return details;
 }
 
-function createItemOrderMenu(item) {
+function createItemOrderControls(item) {
   const wrapper = document.createElement("div");
-  wrapper.className = "item-order-menu";
-  const toggle = actionButton("更多排序", false, () => {
-    menu.hidden = !menu.hidden;
-    toggle.setAttribute("aria-expanded", String(!menu.hidden));
-  });
-  toggle.classList.add("item-order-menu-toggle");
-  toggle.setAttribute("aria-expanded", "false");
-  const menu = document.createElement("div");
-  menu.className = "item-order-menu-panel";
-  menu.hidden = true;
-  const select = document.createElement("select");
-  select.className = "item-order-select";
-  select.setAttribute("aria-label", "選擇移動位置");
-  const first = document.createElement("option");
-  first.value = "";
-  first.textContent = "選擇移動位置";
-  select.append(first);
-  for (const option of [
-    ["top", "移到這一組最上方"],
-    ["bottom", "移到這一組最下方"],
-  ]) {
-    const element = document.createElement("option");
-    element.value = option[0];
-    element.textContent = option[1];
-    select.append(element);
-  }
-  for (const candidate of currentItemGroup(item.id)) {
-    if (String(candidate.id) === String(item.id)) continue;
-    const option = document.createElement("option");
-    option.value = `before:${candidate.id}`;
-    option.textContent = `移到「${itemDisplayTitle(candidate)}」之前`;
-    select.append(option);
-  }
-  const apply = document.createElement("button");
-  apply.type = "button";
-  apply.className = "secondary-button item-order-apply";
-  apply.textContent = "套用";
-  apply.addEventListener("click", () => {
-    const value = select.value;
-    if (!value) return;
-    menu.hidden = true;
-    toggle.setAttribute("aria-expanded", "false");
-    if (value === "top" || value === "bottom") {
-      void moveItemToEdge(item.id, value);
-      return;
-    }
-    const targetId = value.slice("before:".length);
-    void reorderItems(item.id, targetId, true);
-  });
-  menu.append(select, apply);
-  wrapper.append(toggle, menu);
+  wrapper.className = "item-order-controls";
+  const label = document.createElement("span");
+  label.className = "item-order-label";
+  label.textContent = "調整順序";
+  const buttons = document.createElement("div");
+  buttons.className = "item-order-buttons";
+  const group = currentItemGroup(item.id);
+  const index = group.findIndex((candidate) => String(candidate.id) === String(item.id));
+  const pending = state.itemOrderPendingId === String(item.id);
+  const createMoveButton = (direction, text, disabled) => {
+    const button = document.createElement("button");
+    button.type = "button";
+    button.className = "secondary-button item-order-button";
+    button.dataset.direction = direction;
+    button.textContent = text;
+    button.disabled = disabled || pending;
+    button.setAttribute("aria-label", `${text}：${itemDisplayTitle(item)}`);
+    button.addEventListener("click", () => {
+      if (button.disabled) return;
+      button.disabled = true;
+      void moveItemByStep(item.id, direction);
+    });
+    return button;
+  };
+  buttons.append(
+    createMoveButton("up", "↑ 上移", index <= 0),
+    createMoveButton("down", "↓ 下移", index < 0 || index >= group.length - 1),
+  );
+  wrapper.append(label, buttons);
   return wrapper;
-}
-
-async function moveItemToEdge(itemId, edge) {
-  const group = currentItemGroup(itemId);
-  if (group.length < 2) return;
-  const target = edge === "top" ? group[0] : group[group.length - 1];
-  if (String(target.id) === String(itemId)) {
-    showNotice(edge === "top" ? "已經在這一組最上方" : "已經在這一組最下方");
-    return;
-  }
-  await reorderItems(itemId, target.id, edge === "top");
 }
 
 function createNotesEditor(item) {
